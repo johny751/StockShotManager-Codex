@@ -85,7 +85,7 @@ jobs:
           $ssmTasks = @(
             'testAlphaDebugUnitTest', 'testBetaDebugUnitTest', 'testGammaDebugUnitTest', 'testDeltaDebugUnitTest',
             'lintAlphaRelease', 'lintBetaRelease', 'lintGammaRelease', 'lintDeltaRelease',
-            'assembleRelease', '--max-workers=2', '--console=plain'
+            'assembleRelease', '--max-workers=2', '--console=plain', '--info'
           )
           & .\gradlew.bat @ssmTasks
           if ($LASTEXITCODE -ne 0) { throw 'Tests, lint or release build failed.' }
@@ -109,6 +109,14 @@ jobs:
           $ssmKey = Join-Path $env:RUNNER_TEMP 'stockshot-release.jks'
           if (Test-Path -LiteralPath $ssmKey -PathType Leaf) {
             Remove-Item -LiteralPath $ssmKey -Force
+          }
+
+      - name: Stop Gradle before saving Windows caches
+        if: always()
+        run: |
+          if (Test-Path -LiteralPath './gradlew.bat') {
+            & .\gradlew.bat --stop
+            if ($LASTEXITCODE -ne 0) { throw 'Could not stop Gradle.' }
           }
 
       - name: Upload verified A B C D APKs
