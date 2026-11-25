@@ -1,6 +1,6 @@
 # GitHub 构建与签名发布
 
-StockShotManager 现在是现有 `StockShotManager-Codex` 仓库中的普通源码目录；仓库根目录的 `.github/workflows/android-release.yml` 负责云端构建。后续先提交并推送源码，再在 GitHub 构建。应用版本仍为 1.9（10），APK 内的 Git 号对应本次云端检出的外层仓库提交。
+StockShotManager 现在是现有 `StockShotManager-Codex` 仓库中的普通源码目录；仓库根目录的 `.github/workflows/android-release.yml` 负责云端构建。后续先提交并推送源码，再在 GitHub 构建。应用版本以 app/build.gradle 为准（当前 1.10 / 11），APK 内的 Git 号对应本次云端检出的外层仓库提交。
 
 ## 首次配置签名
 

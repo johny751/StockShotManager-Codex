@@ -83,7 +83,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         state.copy(
                             records = snapshot.records,
                             markedCodes = snapshot.markedCodes,
-                            availableDates = (snapshot.availableDates + StorageUtils.today() + date)
+                            availableDates = (snapshot.availableDates + StorageUtils.today())
                                 .distinct().sortedDescending(),
                             selectedIds = selected,
                             selectionMode = state.selectionMode && selected.isNotEmpty(),

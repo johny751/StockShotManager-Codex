@@ -1,6 +1,6 @@
 # StockShotManager
 
-StockShotManager 安卓工程位于 [StockShotManager/](StockShotManager/)，当前应用版本为 **1.9（10）**。A/B/C/D 四个版本可同时安装，各自保存数据库、设置和截图目录。
+StockShotManager 安卓工程位于 [StockShotManager/](StockShotManager/)，当前应用版本为 **1.10（11）**。A/B/C/D 四个版本可同时安装，各自保存数据库、设置和截图目录。
 
 ## 在 GitHub 构建
 

@@ -708,6 +708,8 @@ fun SettingsScreen(nav: NavHostController, vm: SettingsViewModel = viewModel()) 
                     modifier = Modifier.weight(1f)
                 ) { Text("\u626b\u7801\u5bfc\u5165") }
             }
+            FeedbackSettingsSection()
+
             SectionTitle("\u7248\u672c\u4fe1\u606f")
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -715,7 +717,7 @@ fun SettingsScreen(nav: NavHostController, vm: SettingsViewModel = viewModel()) 
                 shape = MaterialTheme.shapes.small,
             ) {
                 Text(
-                    text = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})  Git ${BuildConfig.GIT_COMMIT}\n${BuildConfig.BUILD_TIME}",
+                    text = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})  Git ${BuildConfig.GIT_COMMIT}\n${BuildConfig.BUILD_TIME}\nby codex",
                     modifier = Modifier.padding(12.dp),
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -791,6 +793,14 @@ private fun VersionHistoryDialog(onDismiss: () -> Unit) {
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
+                VersionHistoryEntry(
+                    version = "1.10",
+                    changes = listOf(
+                        "版本信息新增 by codex。",
+                        "新增优化建议，支持记录、整理、截图附件和独立备份恢复。",
+                        "日期选择可通过铅笔输入无数据的历史日期并保存截图，日历仍将无数据日期置灰。",
+                    ),
+                )
                 VersionHistoryEntry(
                     version = "1.9",
                     changes = listOf(

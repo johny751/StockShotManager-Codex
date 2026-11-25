@@ -3,7 +3,15 @@
 本文件记录在本项目（StockShotManager，Windows + PowerShell 环境）开发与打包过程中
 遇到的问题及可复用的解决方案，供后续再次遇到时快速定位。
 
-## 2026-11-25：GitHub 构建迁移（当前流程）
+## 2026-11-25：v1.10（11）功能发布
+
+- 设置版本信息标注 by codex；接入随工程保存的 Feedback Kit 1.2.0 AAR（app/libs）。不依赖开发机的共享模块绝对路径。
+- 优化建议使用默认独立存储和私有 Manifest 组件；备份与恢复在后台执行，恢复前确认完整替换，不能和股票 JSON 备份混用。
+- 日期输入与日历选择采用不同规则：日历只允许有数据日期和今天；铅笔输入允许合法历史日期。availableDates 不再因为当前选中空日期而把它视为有数据。
+- 先提交，再使用 GitHub Actions 执行四版测试、四版 lint、签名构建及包名/版本/原证书/提交校验。共享模块历史验证只作为来源证据，本项目以本轮云端结果为准。
+- 上次 eea7320 已在 GitHub 运行 45564722227 完成四版发布：268 项测试通过，四版 lint 各 0 错误/37 警告。Windows runner 的 Robolectric/SQLite 使用短临时目录；依赖从官方仓库下载。
+
+## 2026-11-25：GitHub 构建迁移（历史接入记录）
 
 - 工程由独立内层仓库改为上一级 StockShotManager-Codex 仓库的普通源码目录；原 main / 792f01d 历史保存在本机上一级 .git/stockshot-migration-backup/original.git。
 - 后续构建全部使用仓库根目录 .github/workflows/android-release.yml。先 Git 提交并推送，再由同一次运行生成 A/B/C/D；具体 Secrets 配置及下载见 GITHUB_BUILD.md。

@@ -4,36 +4,38 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DisplayMode
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.DatePickerDialog as M3DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
-import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneOffset
 
-/**
- * \u65e5\u5386\u5f0f\u65e5\u671f\u9009\u62e9\uff1a\u57fa\u4e8e Material3 DatePicker\uff0c
- * \u4ec5\u5141\u8bb8\u6709\u622a\u56fe\u7684\u65e5\u671f\uff08availableDates\uff09\u53ef\u9009\uff0c\u5176\u4f59\u65e5\u671f\u7f6e\u7070\u3002
- */
+/** Calendar picks existing pages; manual input can create a page for any past date. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DatePickerDialog(
@@ -42,76 +44,80 @@ fun DatePickerDialog(
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    if (availableDates.isEmpty()) {
-        AlertDialog(
-            onDismissRequest = onDismiss,
-            title = { Text("\u9009\u62e9\u65e5\u671f") },
-            text = {
-                Text(
-                    "\u6682\u65e0\u622a\u56fe\u6570\u636e",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = onDismiss) { Text("\u5173\u95ed") }
-            },
-        )
-        return
-    }
-
-    // \u6709\u622a\u56fe\u7684\u65e5\u671f -> UTC \u96f6\u70b9\u6beb\u79d2\u96c6\u5408
-    val availableMillis = remember(availableDates) {
-        availableDates.mapNotNull { dateToUtcMillis(it) }.toSet()
-    }
-    val availableYears = remember(availableDates) {
-        availableDates.mapNotNull { it.take(4).toIntOrNull() }.toSet()
-    }
-
-    val selectableDates = remember(availableMillis, availableYears) {
-        object : SelectableDates {
-            override fun isSelectableDate(utcTimeMillis: Long): Boolean =
-                utcTimeMillis in availableMillis
-
-            override fun isSelectableYear(year: Int): Boolean =
-                availableYears.isEmpty() || year in availableYears
-        }
-    }
-
-    val initialMillis = remember(selectedDate) { dateToUtcMillis(selectedDate) }
-    val state = rememberDatePickerState(
-        initialSelectedDateMillis = initialMillis,
-        selectableDates = selectableDates,
+    val today = LocalDate.now()
+    val policy = remember(availableDates, today) { ScreenshotDatePolicy(availableDates, today) }
+    val initialMillis = remember(selectedDate, policy) { policy.parseInput(selectedDate) }
+    val savedState = rememberDatePickerState(
+        initialSelectedDateMillis = initialMillis?.takeIf { policy.isSelectableDate(it, input = false) },
+        initialDisplayedMonthMillis = initialMillis,
+        yearRange = policy.yearRange,
     )
+    val state = remember(savedState, policy) { ScreenshotDatePickerState(savedState, policy) }
+    val inputMode = state.displayMode == DisplayMode.Input
+    var inputText by rememberSaveable(state.displayMode) {
+        mutableStateOf(state.selectedDateMillis?.let(::utcMillisToDate) ?: selectedDate)
+    }
+    val selectedMillis = if (inputMode) policy.parseInput(inputText) else state.selectedDateMillis
+    val confirmedDate = policy.selectionDate(selectedMillis, inputMode)
 
     M3DatePickerDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(
+                enabled = confirmedDate != null,
                 onClick = {
-                    state.selectedDateMillis?.let { millis ->
-                        utcMillisToDate(millis)?.let(onSelect)
-                    }
-                }
-            ) { Text("\u786e\u5b9a") }
+                    // Revalidate in the current mode, including immediately after a mode switch.
+                    val millis = if (state.displayMode == DisplayMode.Input) {
+                        policy.parseInput(inputText)
+                    } else state.selectedDateMillis
+                    policy.selectionDate(millis, state.displayMode == DisplayMode.Input)?.let(onSelect)
+                },
+            ) { Text("确定") }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("\u53d6\u6d88") }
+            TextButton(onClick = onDismiss) { Text("取消") }
         },
     ) {
-        DatePicker(state = state)
+        if (inputMode) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("输入日期", style = MaterialTheme.typography.headlineSmall)
+                    IconButton(onClick = { state.displayMode = DisplayMode.Picker }) {
+                        Icon(Icons.Default.DateRange, contentDescription = "切换到日历选择")
+                    }
+                }
+                OutlinedTextField(
+                    value = inputText,
+                    onValueChange = {
+                        inputText = it
+                        state.selectedDateMillis = policy.parseInput(it)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("日期（YYYY-MM-DD）") },
+                    placeholder = { Text("2026-09-01") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
+                    isError = inputText.length >= 10 && selectedMillis == null,
+                    supportingText = {
+                        Text(if (inputText.length >= 10 && selectedMillis == null) {
+                            "请输入有效日期，且不得晚于今天"
+                        } else "可以输入今天或更早的日期，无需已有截图")
+                    },
+                )
+            }
+        } else {
+            // Material3 1.2.1 remembers each day's enabled flag without keying SelectableDates.
+            // Recreate the calendar when available dates change; input mode leaves this subtree.
+            key(policy) { DatePicker(state = state) }
+        }
     }
-}
-
-private fun dateToUtcMillis(date: String): Long? = try {
-    LocalDate.parse(date).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-} catch (e: Exception) {
-    null
-}
-
-private fun utcMillisToDate(millis: Long): String? = try {
-    Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()
-} catch (e: Exception) {
-    null
 }
 
 /**
