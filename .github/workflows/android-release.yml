@@ -82,6 +82,10 @@ jobs:
           [IO.File]::WriteAllBytes($env:SSM_STORE_FILE, [Convert]::FromBase64String($env:SSM_KEYSTORE_BASE64))
           Remove-Item Env:SSM_KEYSTORE_BASE64
           if ((Get-Item -LiteralPath $env:SSM_STORE_FILE).Length -eq 0) { throw 'Decoded signing keystore is empty.' }
+          # Robolectric uses test method names in its temp paths; keep SQLite WAL paths short on Windows.
+          $ssmJavaTemp = Join-Path $env:RUNNER_TEMP 'ssm'
+          New-Item -ItemType Directory -Force -Path $ssmJavaTemp | Out-Null
+          $env:JAVA_TOOL_OPTIONS = "-Djava.io.tmpdir=$ssmJavaTemp"
           $ssmTasks = @(
             'testAlphaDebugUnitTest', 'testBetaDebugUnitTest', 'testGammaDebugUnitTest', 'testDeltaDebugUnitTest',
             'lintAlphaRelease', 'lintBetaRelease', 'lintGammaRelease', 'lintDeltaRelease',
