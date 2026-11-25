@@ -31,3 +31,11 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# Local migration archives and signing data must not be published.
+*.bundle
+*.zip
+/codex/
+/BACKUP*/
+/logs/
+**/signing.properties

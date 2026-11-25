@@ -1,0 +1,133 @@
+name: StockShotManager signed release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'StockShotManager/**'
+      - '.github/workflows/android-release.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stockshot-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-2022
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: StockShotManager
+    env:
+      TZ: Asia/Shanghai
+
+    steps:
+      - name: Checkout committed source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle and validate wrapper
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
+        with:
+          cache-provider: basic
+          dependency-graph: disabled
+
+      - name: Install Android SDK 34 and Build Tools 34.0.0
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:ANDROID_HOME) { throw 'ANDROID_HOME is missing on this runner.' }
+          $ssmSdkManager = Join-Path $env:ANDROID_HOME 'cmdline-tools/latest/bin/sdkmanager.bat'
+          if (-not (Test-Path -LiteralPath $ssmSdkManager -PathType Leaf)) {
+            $ssmSdkManager = Get-ChildItem -Path "$env:ANDROID_HOME/cmdline-tools/*/bin/sdkmanager.bat" -File |
+              Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $ssmSdkManager) { throw 'Android sdkmanager was not found.' }
+          1..100 | ForEach-Object { 'y' } | & $ssmSdkManager --licenses
+          if ($LASTEXITCODE -ne 0) { throw 'Android SDK license acceptance failed.' }
+          & $ssmSdkManager 'platforms;android-34' 'build-tools;34.0.0' 'platform-tools'
+          if ($LASTEXITCODE -ne 0) { throw 'Android SDK installation failed.' }
+          $ssmSdkPath = $env:ANDROID_HOME.Replace('\', '/')
+          [IO.File]::WriteAllText((Join-Path $PWD 'local.properties'), "sdk.dir=$ssmSdkPath" + [Environment]::NewLine)
+
+      - name: Test, lint, build and verify all four signed APKs
+        env:
+          SSM_KEYSTORE_BASE64: ${{ secrets.SSM_KEYSTORE_BASE64 }}
+          SSM_STORE_PASSWORD: ${{ secrets.SSM_STORE_PASSWORD }}
+          SSM_KEY_ALIAS: ${{ secrets.SSM_KEY_ALIAS }}
+          SSM_KEY_PASSWORD: ${{ secrets.SSM_KEY_PASSWORD }}
+          SSM_EXPECTED_CERT_SHA256: ${{ secrets.SSM_EXPECTED_CERT_SHA256 }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($ssmName in @('SSM_KEYSTORE_BASE64', 'SSM_STORE_PASSWORD', 'SSM_KEY_ALIAS', 'SSM_KEY_PASSWORD', 'SSM_EXPECTED_CERT_SHA256')) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($ssmName))) {
+              throw "Missing repository secret: $ssmName"
+            }
+          }
+          $ssmFingerprint = $env:SSM_EXPECTED_CERT_SHA256.Replace(':', '').Trim()
+          if ($ssmFingerprint -notmatch '^[0-9a-fA-F]{64}$') { throw 'Invalid expected signing certificate SHA-256.' }
+          $env:SSM_STORE_FILE = Join-Path $env:RUNNER_TEMP 'stockshot-release.jks'
+          [IO.File]::WriteAllBytes($env:SSM_STORE_FILE, [Convert]::FromBase64String($env:SSM_KEYSTORE_BASE64))
+          Remove-Item Env:SSM_KEYSTORE_BASE64
+          if ((Get-Item -LiteralPath $env:SSM_STORE_FILE).Length -eq 0) { throw 'Decoded signing keystore is empty.' }
+          $ssmTasks = @(
+            'testAlphaDebugUnitTest', 'testBetaDebugUnitTest', 'testGammaDebugUnitTest', 'testDeltaDebugUnitTest',
+            'lintAlphaRelease', 'lintBetaRelease', 'lintGammaRelease', 'lintDeltaRelease',
+            'assembleRelease', '--max-workers=2', '--console=plain'
+          )
+          & .\gradlew.bat @ssmTasks
+          if ($LASTEXITCODE -ne 0) { throw 'Tests, lint or release build failed.' }
+          $ssmOut = Join-Path $PWD 'build/verified-release'
+          New-Item -ItemType Directory -Force -Path $ssmOut | Out-Null
+          & pwsh -NoProfile -File .\verify-release.ps1 -BuildTools (Join-Path $env:ANDROID_HOME 'build-tools/34.0.0') -ExpectedCertificateSha256 $env:SSM_EXPECTED_CERT_SHA256 |
+            Tee-Object -FilePath (Join-Path $ssmOut 'verification.txt')
+          if ($LASTEXITCODE -ne 0) { throw 'APK identity, version, commit or signing verification failed.' }
+          $ssmFlavors = @('alpha', 'beta', 'gamma', 'delta')
+          for ($ssmIndex = 0; $ssmIndex -lt $ssmFlavors.Count; $ssmIndex++) {
+            $ssmFlavor = $ssmFlavors[$ssmIndex]
+            $ssmEdition = [char](65 + $ssmIndex)
+            Copy-Item -LiteralPath "app/build/outputs/apk/$ssmFlavor/release/app-$ssmFlavor-release.apk" -Destination (Join-Path $ssmOut "StockShotManager-$ssmEdition-release.apk")
+          }
+          "Commit: $env:GITHUB_SHA" | Add-Content -LiteralPath (Join-Path $ssmOut 'verification.txt')
+          "Run: $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID" | Add-Content -LiteralPath (Join-Path $ssmOut 'verification.txt')
+
+      - name: Remove temporary signing keystore
+        if: always()
+        run: |
+          $ssmKey = Join-Path $env:RUNNER_TEMP 'stockshot-release.jks'
+          if (Test-Path -LiteralPath $ssmKey -PathType Leaf) {
+            Remove-Item -LiteralPath $ssmKey -Force
+          }
+
+      - name: Upload verified A B C D APKs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: StockShotManager-ABCD-release-${{ github.run_number }}-${{ github.sha }}
+          path: StockShotManager/build/verified-release/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: StockShotManager-validation-${{ github.run_number }}-${{ github.sha }}
+          path: |
+            StockShotManager/app/build/reports/tests/
+            StockShotManager/app/build/test-results/
+            StockShotManager/app/build/reports/lint-results-*
+          if-no-files-found: ignore
+          retention-days: 30

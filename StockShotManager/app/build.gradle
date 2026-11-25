@@ -1,0 +1,153 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'com.google.devtools.ksp'
+}
+
+def gitMetadata = providers.exec {
+    commandLine 'git', '-c', "safe.directory=${rootDir.absolutePath.replace('\\', '/')}",
+        'log', '-1', '--format=%h%n%cd', '--date=format:%Y-%m-%d %H:%M', 'HEAD'
+    ignoreExitValue = true
+}.standardOutput.asText.get().readLines()
+def gitCommit = gitMetadata.size() >= 1 && !gitMetadata[0].isBlank() ? gitMetadata[0].trim() : 'unknown'
+def buildTime = gitMetadata.size() >= 2 && !gitMetadata[1].isBlank() ? gitMetadata[1].trim() : 'unknown'
+
+// Local signing data stays untracked; GitHub Actions supplies repository secrets.
+def signingProperties = new Properties()
+def signingPropertiesFile = rootProject.file('signing.properties')
+if (signingPropertiesFile.exists()) {
+    signingPropertiesFile.withInputStream { signingProperties.load(it) }
+}
+def signingValue = { String environmentName, String propertyName ->
+    providers.environmentVariable(environmentName).orNull ?: signingProperties.getProperty(propertyName)
+}
+
+android {
+    namespace 'com.stockshot.manager'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.stockshot.manager"
+        minSdk 26
+        targetSdk 34
+        versionCode 10
+        versionName "1.9"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // Stable for the same commit so no-op builds remain incremental.
+        buildConfigField "String", "BUILD_TIME", "\"${buildTime}\""
+        buildConfigField "String", "GIT_COMMIT", "\"${gitCommit}\""
+        // Default screenshot root dir name; overridden per product flavor below.
+        buildConfigField "String", "DEFAULT_ROOT_DIR_NAME", "\"StockScreenshots\""
+    }
+
+    signingConfigs {
+        release {
+            storeFile rootProject.file(signingValue('SSM_STORE_FILE', 'storeFile') ?: 'keystore/stockshot.jks')
+            storePassword signingValue('SSM_STORE_PASSWORD', 'storePassword')
+            keyAlias signingValue('SSM_KEY_ALIAS', 'keyAlias')
+            keyPassword signingValue('SSM_KEY_PASSWORD', 'keyPassword')
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    // Four coexisting installs on one phone, each with its own default storage dir.
+    flavorDimensions += "edition"
+    productFlavors {
+        alpha {
+            dimension "edition"
+            // Keeps original applicationId com.stockshot.manager
+            resValue "string", "app_name", "\u80a1\u7968\u622a\u56fe A"
+            buildConfigField "String", "DEFAULT_ROOT_DIR_NAME", "\"StockScreenshots\""
+        }
+        beta {
+            dimension "edition"
+            applicationIdSuffix ".b"
+            resValue "string", "app_name", "\u80a1\u7968\u622a\u56fe B"
+            buildConfigField "String", "DEFAULT_ROOT_DIR_NAME", "\"StockScreenshotsB\""
+        }
+        gamma {
+            dimension "edition"
+            applicationIdSuffix ".c"
+            resValue "string", "app_name", "\u80a1\u7968\u622a\u56fe C"
+            buildConfigField "String", "DEFAULT_ROOT_DIR_NAME", "\"StockScreenshotsC\""
+        }
+        delta {
+            dimension "edition"
+            applicationIdSuffix ".d"
+            resValue "string", "app_name", "\u80a1\u7968\u622a\u56fe D"
+            buildConfigField "String", "DEFAULT_ROOT_DIR_NAME", "\"StockScreenshotsD\""
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+
+    testOptions {
+        unitTests.includeAndroidResources = true
+    }
+
+    buildFeatures {
+        compose true
+        buildConfig true
+    }
+
+    composeOptions {
+        kotlinCompilerExtensionVersion '1.5.10'
+    }
+
+    packaging {
+        resources {
+            excludes += '/META-INF/{AL2.0,LGPL2.1}'
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.12.0'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.activity:activity-compose:1.8.2'
+   implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.7.0'
+   implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.7.0'
+
+    def compose_bom = platform('androidx.compose:compose-bom:2024.02.02')
+    implementation compose_bom
+    androidTestImplementation compose_bom
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.ui:ui-graphics'
+    implementation 'androidx.compose.ui:ui-tooling-preview'
+    implementation 'androidx.compose.material:material-icons-extended'
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.compose.foundation:foundation'
+    implementation 'androidx.navigation:navigation-compose:2.7.7'
+
+    implementation 'io.coil-kt:coil-compose:2.5.0'
+
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+    implementation 'com.google.code.gson:gson:2.10.1'
+    implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
+
+    def room_version = "2.6.1"
+    implementation "androidx.room:room-runtime:$room_version"
+    implementation "androidx.room:room-ktx:$room_version"
+    ksp "androidx.room:room-compiler:$room_version"
+
+    debugImplementation 'androidx.compose.ui:ui-tooling'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.12.2'
+    androidTestImplementation 'androidx.test:runner:1.5.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+}

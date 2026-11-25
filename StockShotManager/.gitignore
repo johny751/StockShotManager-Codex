@@ -1,0 +1,31 @@
+# Gradle
+.gradle/
+build/
+
+# Android build outputs
+app/build/
+*/build/
+
+# Local configuration (machine-specific SDK path)
+local.properties
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+captures/
+
+# Signing material is local only; GitHub Actions uses repository secrets.
+*.jks
+*.keystore
+signing.properties
+
+# Local tools and extension logs
+/_analyze.py
+/logs/
+
+# Log / temp
+*.log
+
+# Build artifacts copied to project root by build-apk.bat
+*.apk
