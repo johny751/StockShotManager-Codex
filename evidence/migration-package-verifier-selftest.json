@@ -1,0 +1,15 @@
+{
+  "TestedAt": "2026-11-25T07:44:14.0242027+08:00",
+  "WindowsPowerShell51": {
+    "ExitCode": 0,
+    "Output": "Verified 534 original files; every checksum and manifest size matched.",
+    "DefaultPackageRootPassed": true
+  },
+  "PowerShell7": {
+    "Version": "7.6.9",
+    "ExitCode": 0,
+    "Output": "Verified 534 original files; every checksum and manifest size matched.\r\nRun this check before Configure-Environment.ps1, which deliberately changes machine-specific paths.",
+    "DefaultPackageRootPassed": true
+  },
+  "Note": "Verified the fixed receiving-computer checksum script from outside the package folder before final compression. All package hashes are regenerated during finalization."
+}

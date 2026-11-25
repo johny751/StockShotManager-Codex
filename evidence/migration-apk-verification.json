@@ -1,0 +1,54 @@
+{
+  "verified_at": "2026-11-25T07:21:11.130638+08:00",
+  "verification": "Copied APK identity, signing certificate and embedded Git commit verified independently before packaging.",
+  "apks": [
+    {
+      "edition": "A",
+      "path": "StockShotManager/StockShotManager-A-release-latest.apk",
+      "package": "com.stockshot.manager",
+      "version_name": "1.9",
+      "version_code": 10,
+      "git_short": "792f01d",
+      "bytes": 12671468,
+      "sha256": "b4ce40d8334f1cee12b61a3754667ab974a35b1968e6128ecf0ae8b96ef7ea70",
+      "signature_verified": true,
+      "certificate_sha256": "76a877f2ce63ba6b5891f7c34e2c37b54426c37cd0c8ea21354d7b33f29e1820"
+    },
+    {
+      "edition": "B",
+      "path": "StockShotManager/StockShotManager-B-release-latest.apk",
+      "package": "com.stockshot.manager.b",
+      "version_name": "1.9",
+      "version_code": 10,
+      "git_short": "792f01d",
+      "bytes": 12671464,
+      "sha256": "9b6833188a84b384b0f6aca9e99653dadba08cce1464ce8d0644315659fcf369",
+      "signature_verified": true,
+      "certificate_sha256": "76a877f2ce63ba6b5891f7c34e2c37b54426c37cd0c8ea21354d7b33f29e1820"
+    },
+    {
+      "edition": "C",
+      "path": "StockShotManager/StockShotManager-C-release-latest.apk",
+      "package": "com.stockshot.manager.c",
+      "version_name": "1.9",
+      "version_code": 10,
+      "git_short": "792f01d",
+      "bytes": 12671520,
+      "sha256": "49c2da8ffeba9b65ff01436a12480f18f1644abf28458bcafc506a2221049cd4",
+      "signature_verified": true,
+      "certificate_sha256": "76a877f2ce63ba6b5891f7c34e2c37b54426c37cd0c8ea21354d7b33f29e1820"
+    },
+    {
+      "edition": "D",
+      "path": "StockShotManager/StockShotManager-D-release-latest.apk",
+      "package": "com.stockshot.manager.d",
+      "version_name": "1.9",
+      "version_code": 10,
+      "git_short": "792f01d",
+      "bytes": 12671512,
+      "sha256": "8a72bcf53bc03ad18a75e2a7f5ce57742d245d606577767b111e36e32dbc1234",
+      "signature_verified": true,
+      "certificate_sha256": "76a877f2ce63ba6b5891f7c34e2c37b54426c37cd0c8ea21354d7b33f29e1820"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.stockshot.manager.util.DiagnosticLoggerTest" tests="10" skipped="0" failures="0" errors="0" timestamp="2026-09-28T11:49:10" hostname="BA-NOTE" time="0.729">
+  <properties/>
+  <testcase name="exceptionIncludesStackCauseAndSuppressedFailuresWithCredentialsRedacted" classname="com.stockshot.manager.util.DiagnosticLoggerTest" time="0.127"/>
+  <testcase name="enabledAndDisabledPreferenceSurviveLoggerRecreation" classname="com.stockshot.manager.util.DiagnosticLoggerTest" time="0.035"/>
+  <testcase name="exportAndClearWaitForAllPreviouslyAcceptedWrites" classname="com.stockshot.manager.util.DiagnosticLoggerTest" time="0.081"/>
+  <testcase name="snapshotsAreUniqueBoundedAndContainEnvironmentEvenWhenDisabledAndEmpty" classname="com.stockshot.manager.util.DiagnosticLoggerTest" time="0.066"/>
+  <testcase name="defaultOffAndDisabledLoggingNeverEmitButExistingLogsStayReadable" classname="com.stockshot.manager.util.DiagnosticLoggerTest" time="0.014"/>
+  <testcase name="failedPreferenceWriteRemainsVisibleAfterSuccessfulReads" classname="com.stockshot.manager.util.DiagnosticLoggerTest" time="0.012"/>
+  <testcase name="rotationRetainsTheNewestRecordsInOrderAndLimitsEveryFile" classname="com.stockshot.manager.util.DiagnosticLoggerTest" time="0.095"/>
+  <testcase name="previewIsBoundedButExportIncludesTheCompleteRetainedLog" classname="com.stockshot.manager.util.DiagnosticLoggerTest" time="0.24"/>
+  <testcase name="writeAndExportFailuresAreVisibleWithoutCrashingAndCanRecover" classname="com.stockshot.manager.util.DiagnosticLoggerTest" time="0.027"/>
+  <testcase name="oversizedUnicodeEntryStaysValidUtf8AndWithinCapacity" classname="com.stockshot.manager.util.DiagnosticLoggerTest" time="0.03"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

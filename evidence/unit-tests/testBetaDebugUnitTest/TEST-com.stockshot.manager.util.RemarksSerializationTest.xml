@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.stockshot.manager.util.RemarksSerializationTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-09-28T11:49:10" hostname="BA-NOTE" time="0.082">
+  <properties/>
+  <testcase name="oldBackupWithoutRemarksRestoresEmptyString" classname="com.stockshot.manager.util.RemarksSerializationTest" time="0.064"/>
+  <testcase name="csvRoundTripPreservesUnicodeQuotesCommasAndAllNewlines" classname="com.stockshot.manager.util.RemarksSerializationTest" time="0.004"/>
+  <testcase name="malformedCsvDoesNotSilentlyDropTheEndOfRemarks" classname="com.stockshot.manager.util.RemarksSerializationTest" time="0.0"/>
+  <testcase name="csvLastQuotedEmptyCellDoesNotNeedTrailingNewline" classname="com.stockshot.manager.util.RemarksSerializationTest" time="0.001"/>
+  <testcase name="oldSixColumnCsvWithBomAndCrlfHasEmptyRemarks" classname="com.stockshot.manager.util.RemarksSerializationTest" time="0.0"/>
+  <testcase name="backupRoundTripRetainsRemarksAndRelocatesImage" classname="com.stockshot.manager.util.RemarksSerializationTest" time="0.011"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

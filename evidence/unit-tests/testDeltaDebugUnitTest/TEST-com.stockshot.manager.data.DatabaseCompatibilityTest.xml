@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.stockshot.manager.data.DatabaseCompatibilityTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-09-28T11:51:13" hostname="BA-NOTE" time="3.455">
+  <properties/>
+  <testcase name="repeatedCaptureOfHistoricalDateNeverReusesAnImagePath" classname="com.stockshot.manager.data.DatabaseCompatibilityTest" time="0.878"/>
+  <testcase name="failedBackupReplacementRollsBackBothRecordsAndMarks" classname="com.stockshot.manager.data.DatabaseCompatibilityTest" time="1.053"/>
+  <testcase name="listsAndSearchChooseTheLastInsertedCaptureWhenTimestampsMatch" classname="com.stockshot.manager.data.DatabaseCompatibilityTest" time="0.216"/>
+  <testcase name="lowerSellPriceReplacesOldValueAndRecomputesEachCapturesOwnProfit" classname="com.stockshot.manager.data.DatabaseCompatibilityTest" time="0.199"/>
+  <testcase name="backupReplacementKeepsExactRemarksAndReplacesMarks" classname="com.stockshot.manager.data.DatabaseCompatibilityTest" time="0.26"/>
+  <testcase name="versionOneUpgradePreservesRecordsMarksAndSettingsAndReopens" classname="com.stockshot.manager.data.DatabaseCompatibilityTest" time="0.425"/>
+  <testcase name="recaptureInheritsLatestSameDateRemarksIncludingAnEmptyRemark" classname="com.stockshot.manager.data.DatabaseCompatibilityTest" time="0.159"/>
+  <testcase name="importKeepsItsExactRemarksEvenWhenAnExistingCaptureHasRemarks" classname="com.stockshot.manager.data.DatabaseCompatibilityTest" time="0.122"/>
+  <testcase name="remarksUpdateAndClearAllCapturesOnlyForTheChosenStockAndDate" classname="com.stockshot.manager.data.DatabaseCompatibilityTest" time="0.141"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

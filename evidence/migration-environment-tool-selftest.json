@@ -1,0 +1,22 @@
+﻿[
+    {
+        "Test":  "WhatIf validates real JDK17/SDK34 through paths with spaces and writes nothing",
+        "Passed":  true
+    },
+    {
+        "Test":  "Success preserves unrelated values and signing settings; escaped paths; exact backups; UTF8 without BOM",
+        "Passed":  true
+    },
+    {
+        "Test":  "Missing SDK fails before backup or any partial configuration writes",
+        "Passed":  true
+    },
+    {
+        "Test":  "Duplicate JDK configuration line fails before modifying any file",
+        "Passed":  true
+    },
+    {
+        "Test":  "Creates absent local.properties and records prior absence in backup manifest",
+        "Passed":  true
+    }
+]

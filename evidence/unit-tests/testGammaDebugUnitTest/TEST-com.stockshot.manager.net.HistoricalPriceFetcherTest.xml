@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.stockshot.manager.net.HistoricalPriceFetcherTest" tests="19" skipped="0" failures="0" errors="0" timestamp="2026-09-28T11:50:59" hostname="BA-NOTE" time="0.219">
+  <properties/>
+  <testcase name="negativeDaysIsRejected" classname="com.stockshot.manager.net.HistoricalPriceFetcherTest" time="0.003"/>
+  <testcase name="mismatchedMarketAndNonIntegerStatusAreFailures" classname="com.stockshot.manager.net.HistoricalPriceFetcherTest" time="0.004"/>
+  <testcase name="batchRunsAtMostFourRequestsAtOnce" classname="com.stockshot.manager.net.HistoricalPriceFetcherTest" time="0.16"/>
+  <testcase name="cancellationIsPropagated" classname="com.stockshot.manager.net.HistoricalPriceFetcherTest" time="0.027"/>
+  <testcase name="anyInvalidInRangeHighFailsInsteadOfReturningAPartialMaximum" classname="com.stockshot.manager.net.HistoricalPriceFetcherTest" time="0.003"/>
+  <testcase name="validEmptyOrOutOfRangeHistoryIsNoData" classname="com.stockshot.manager.net.HistoricalPriceFetcherTest" time="0.001"/>
+  <testcase name="largeDayCountStillEndsAtToday" classname="com.stockshot.manager.net.HistoricalPriceFetcherTest" time="0.0"/>
+  <testcase name="batchKeepsSuccessNoDataAndFailuresSeparateAndFetchesEachCodeOnce" classname="com.stockshot.manager.net.HistoricalPriceFetcherTest" time="0.003"/>
+  <testcase name="malformedOrFailedResponsesAreFailuresRatherThanNoData" classname="com.stockshot.manager.net.HistoricalPriceFetcherTest" time="0.002"/>
+  <testcase name="zeroDaysIsRejected" classname="com.stockshot.manager.net.HistoricalPriceFetcherTest" time="0.0"/>
+  <testcase name="noAvailableWindowSkipsNetworkForEveryStock" classname="com.stockshot.manager.net.HistoricalPriceFetcherTest" time="0.003"/>
+  <testcase name="singleDayRangeIncludesThatDaysHigh" classname="com.stockshot.manager.net.HistoricalPriceFetcherTest" time="0.001"/>
+  <testcase name="maximumUsesDailyHighAndBothRangeBoundaries" classname="com.stockshot.manager.net.HistoricalPriceFetcherTest" time="0.001"/>
+  <testcase name="currentAndFutureRecordDatesHaveNoAvailableWindow" classname="com.stockshot.manager.net.HistoricalPriceFetcherTest" time="0.0"/>
+  <testcase name="securityIdsMapShanghaiShenzhenAndBeijingStocks" classname="com.stockshot.manager.net.HistoricalPriceFetcherTest" time="0.001"/>
+  <testcase name="windowExcludesRecordDayAndCountsCalendarDays" classname="com.stockshot.manager.net.HistoricalPriceFetcherTest" time="0.0"/>
+  <testcase name="acceptsBeijingHistoryWithItsOwnMarketAndCode" classname="com.stockshot.manager.net.HistoricalPriceFetcherTest" time="0.001"/>
+  <testcase name="incompleteWindowIncludesAvailableDataThroughToday" classname="com.stockshot.manager.net.HistoricalPriceFetcherTest" time="0.001"/>
+  <testcase name="securityIdsRejectMalformedCodes" classname="com.stockshot.manager.net.HistoricalPriceFetcherTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

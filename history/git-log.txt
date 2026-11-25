@@ -1,0 +1,269 @@
+792f01d1cf25054bbd0829c5a7fef505c85a8fb4 2026-09-28T19:46:01+08:00 Fix historical high fallback and add switchable diagnostic logs
+
+ BUILD_NOTES.md                                     |  10 +
+ RELEASE_NOTES.md                                   |  17 +-
+ app/build.gradle                                   |   4 +-
+ app/src/main/AndroidManifest.xml                   |  10 +
+ .../java/com/stockshot/manager/StockShotApp.kt     |   2 +
+ .../manager/net/HistoricalPriceFetcher.kt          |  68 +++--
+ .../com/stockshot/manager/net/HistoryHttpClient.kt | 132 +++++++++
+ .../manager/net/RegionalBackupHistorySource.kt     | 184 +++++++++++++
+ .../manager/ui/screen/DiagnosticsLogDialog.kt      | 303 +++++++++++++++++++++
+ .../com/stockshot/manager/ui/screen/MainScreen.kt  |  47 ++++
+ .../stockshot/manager/ui/screen/SettingsScreen.kt  |   9 +
+ .../com/stockshot/manager/ui/vm/MainViewModel.kt   |  52 +++-
+ .../java/com/stockshot/manager/util/AppLogger.kt   | 300 +++++++++++++++++++-
+ app/src/main/res/xml/diagnostic_file_paths.xml     |   4 +
+ .../manager/net/HistoricalBackupSourceTest.kt      | 229 ++++++++++++++++
+ .../manager/util/DiagnosticFileProviderTest.kt     |  64 +++++
+ .../stockshot/manager/util/DiagnosticLoggerTest.kt | 244 +++++++++++++++++
+ 17 files changed, 1622 insertions(+), 57 deletions(-)
+bce49a783ca90f911860a145b2a8d96351b235bf 2026-09-27T20:14:29+08:00 fix: verify APK hashes without PowerShell module dependencies
+
+ BUILD_NOTES.md     |  1 +
+ verify-release.ps1 | 11 ++++++++++-
+ 2 files changed, 11 insertions(+), 1 deletion(-)
+498983867a6a93d26adbe963cfbb09f06a3ca32a 2026-09-27T19:56:08+08:00 v1.8: add historical highs, dated captures, remarks and four editions
+
+ AGENTS.md                                          |  11 +-
+ BUILD_NOTES.md                                     |  40 ++-
+ RELEASE_NOTES.md                                   |  31 ++
+ app/build.gradle                                   |  23 +-
+ app/src/alpha/res/values/strings.xml               |   4 +
+ app/src/beta/res/values/strings.xml                |   4 +
+ app/src/delta/res/values/strings.xml               |   4 +
+ app/src/gamma/res/values/strings.xml               |   4 +
+ app/src/main/AndroidManifest.xml                   |   1 +
+ .../manager/automation/AutomationController.kt     | 113 ++++---
+ .../manager/automation/AutomationManager.kt        |  84 +++--
+ .../java/com/stockshot/manager/data/AppDatabase.kt |  12 +-
+ .../com/stockshot/manager/data/StockRepository.kt  |  30 +-
+ .../stockshot/manager/data/dao/StockRecordDao.kt   |  31 +-
+ .../stockshot/manager/data/entity/StockRecord.kt   |   3 +-
+ .../manager/net/HistoricalPriceFetcher.kt          | 147 +++++++++
+ .../com/stockshot/manager/ui/screen/Dialogs.kt     | 107 ++++++
+ .../com/stockshot/manager/ui/screen/MainScreen.kt  | 365 +++++++++++++--------
+ .../stockshot/manager/ui/screen/SearchScreen.kt    | 205 +++++++-----
+ .../stockshot/manager/ui/screen/SettingsScreen.kt  |   9 +
+ .../com/stockshot/manager/ui/screen/StockTable.kt  | 135 ++++++++
+ .../com/stockshot/manager/ui/vm/MainViewModel.kt   | 200 ++++++++---
+ .../com/stockshot/manager/ui/vm/SearchViewModel.kt |  29 +-
+ .../java/com/stockshot/manager/util/BackupUtils.kt |  69 ++--
+ .../java/com/stockshot/manager/util/ExportUtils.kt | 107 ++++--
+ .../com/stockshot/manager/util/QrShareUtils.kt     |   2 +-
+ .../com/stockshot/manager/util/StorageUtils.kt     |  10 +-
+ .../AutomationControllerLifecycleTest.kt           | 144 ++++++++
+ .../manager/data/DatabaseCompatibilityTest.kt      | 333 +++++++++++++++++++
+ .../manager/net/HistoricalPriceFetcherTest.kt      | 238 ++++++++++++++
+ .../com/stockshot/manager/util/ProfitCalcTest.kt   |  22 ++
+ .../manager/util/RemarksSerializationTest.kt       |  74 +++++
+ build-apk.bat                                      | 147 +++++----
+ verify-release.ps1                                 |  48 +++
+ 34 files changed, 2275 insertions(+), 511 deletions(-)
+ee7b008f1009be5e728822c044a74f2f9ac484ec 2026-07-29T04:04:47+08:00 v1.7: analyze capital lines only in window left of red/green dots
+
+ app/build.gradle                                     |  4 ++--
+ .../com/stockshot/indicator/IndicatorDetector.kt     | 20 ++++++++++++++------
+ .../manager/automation/AutomationManager.kt          |  6 +++++-
+ .../java/com/stockshot/manager/data/SettingsStore.kt |  4 ++++
+ .../stockshot/manager/overlay/FeatureTestOverlay.kt  |  6 +++++-
+ .../stockshot/manager/ui/screen/SettingsScreen.kt    | 18 ++++++++++++++++++
+ .../com/stockshot/manager/ui/vm/SettingsViewModel.kt |  3 +++
+ 7 files changed, 51 insertions(+), 10 deletions(-)
+4589a8ecbf1cf70bf20ecab0adf5b34204ad3276 2026-07-28T23:40:27+08:00 v1.6: expose dot-align tolerance + min-confidence thresholds for on-site tuning
+
+ app/build.gradle                                   |  4 +--
+ .../com/stockshot/indicator/IndicatorDetector.kt   | 20 ++++++++++----
+ .../manager/automation/AutomationManager.kt        | 10 ++++++-
+ .../com/stockshot/manager/data/SettingsStore.kt    |  8 ++++++
+ .../manager/overlay/FeatureTestOverlay.kt          | 17 +++++++++++-
+ .../stockshot/manager/ui/screen/SettingsScreen.kt  | 31 ++++++++++++++++++++++
+ .../stockshot/manager/ui/vm/SettingsViewModel.kt   |  6 +++++
+ 7 files changed, 87 insertions(+), 9 deletions(-)
+6d14e6c6ec5a4a1f4dc976533e374570abafeb37 2026-07-28T01:48:57+08:00 fix: preserve Gradle incremental builds with stable build metadata
+
+ BUILD_NOTES.md   | 29 ++++++++++++++++++++++++++++-
+ app/build.gradle | 13 +++++++------
+ 2 files changed, 35 insertions(+), 7 deletions(-)
+77c40cb7538cfce21d1a9a1c94eb193f45e54f84 2026-07-28T01:11:14+08:00 feat: open this app's accessibility service settings directly
+
+ .../java/com/stockshot/manager/ui/MainActivity.kt  | 33 ++++++++++++++++++++--
+ .../com/stockshot/manager/ui/screen/MainScreen.kt  |  6 ++++
+ .../stockshot/manager/ui/screen/SettingsScreen.kt  |  2 +-
+ 3 files changed, 38 insertions(+), 3 deletions(-)
+ad0c87c1a3824e0a282c7cf2d52e166d5c96b9b9 2026-07-27T22:13:53+08:00 v1.5: fix bottom green-dot detection (B主C兜底), capital purple/yellow dual mode, today date switch, yellow track
+
+ app/build.gradle                                   |   4 +-
+ .../com/stockshot/indicator/IndicatorDetector.kt   | 121 +++++++++++++++------
+ .../manager/automation/AutomationController.kt     |   4 +
+ .../manager/automation/AutomationManager.kt        |   5 +-
+ .../com/stockshot/manager/data/SettingsStore.kt    |   4 +
+ .../com/stockshot/manager/ui/screen/MainScreen.kt  |  11 +-
+ .../stockshot/manager/ui/screen/SettingsScreen.kt  |  20 ++++
+ .../com/stockshot/manager/ui/vm/MainViewModel.kt   |   2 +-
+ .../stockshot/manager/ui/vm/SettingsViewModel.kt   |   3 +
+ .../java/com/stockshot/manager/util/BackupUtils.kt |   1 +
+ 10 files changed, 135 insertions(+), 40 deletions(-)
+b74c0b2b724b00ec9a031964024f8504643b81f4 2026-07-26T23:23:34+08:00 1.4(5): fix crosshair-close mis-tap, add tunable delays and close-crosshair mode, add click-next feature test
+
+ app/build.gradle                                   |  4 +-
+ .../manager/automation/AutomationManager.kt        | 55 ++++++++++++++++++----
+ .../com/stockshot/manager/data/SettingsStore.kt    | 11 +++++
+ .../manager/overlay/FeatureTestOverlay.kt          | 22 +++++++++
+ .../service/ScreenshotAccessibilityService.kt      |  7 +++
+ .../stockshot/manager/ui/screen/SettingsScreen.kt  | 42 +++++++++++++++++
+ .../stockshot/manager/ui/vm/SettingsViewModel.kt   |  7 +++
+ .../java/com/stockshot/manager/util/BackupUtils.kt |  2 +
+ 8 files changed, 140 insertions(+), 10 deletions(-)
+24cc4288c84f26130ad807bb433594089bb5efb5 2026-07-26T20:21:33+08:00 feat: settings QR share + restore missing-image check; v1.3(4)
+
+ app/build.gradle                                   |   5 +-
+ app/src/main/AndroidManifest.xml                   |   1 +
+ .../stockshot/manager/ui/screen/SettingsScreen.kt  | 114 ++++++++++++++++
+ .../stockshot/manager/ui/vm/SettingsViewModel.kt   |  49 ++++++-
+ .../java/com/stockshot/manager/util/BackupUtils.kt |  10 ++
+ .../com/stockshot/manager/util/QrShareUtils.kt     | 144 +++++++++++++++++++++
+ 6 files changed, 320 insertions(+), 3 deletions(-)
+c7be8f8aac5997996ab96611f843bf6fa1829d2f 2026-07-26T17:50:23+08:00 docs: add BUILD_NOTES section 10 (suspend call compile fix)
+
+ BUILD_NOTES.md | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+169f59890f160ba9bcff2f2e8637af50ef871645 2026-07-26T17:26:58+08:00 fix: make screenSizeSafe suspend (capture() is suspend)
+
+ app/src/main/java/com/stockshot/manager/automation/AutomationManager.kt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+f3072506d64bd4601d3f75cd3fb37cc07a01d7fe 2026-07-26T17:10:40+08:00 feat: pre-capture indicator auto-detect/mark/buyprice + generic node reader + feature test overlay; v1.2(3)
+
+ app/build.gradle                                   |   4 +-
+ .../com/stockshot/indicator/IndicatorDetector.kt   | 296 +++++++++++++
+ .../manager/automation/AutomationController.kt     |  30 +-
+ .../manager/automation/AutomationManager.kt        | 206 ++++++++-
+ .../com/stockshot/manager/data/SettingsStore.kt    |  35 ++
+ .../manager/overlay/FeatureTestOverlay.kt          | 478 +++++++++++++++++++++
+ .../stockshot/manager/overlay/HighlightOverlay.kt  | 140 ++++++
+ .../service/ScreenshotAccessibilityService.kt      | 153 +++++++
+ .../com/stockshot/manager/ui/screen/MainScreen.kt  |  68 ++-
+ .../stockshot/manager/ui/screen/SettingsScreen.kt  | 184 ++++++++
+ .../stockshot/manager/ui/vm/SettingsViewModel.kt   |  98 ++++-
+ .../java/com/stockshot/manager/util/BackupUtils.kt |  14 +
+ 12 files changed, 1679 insertions(+), 27 deletions(-)
+efa2483a3fa99fad2216e2fba939cd1ac74acaec 2026-07-26T14:08:12+08:00 docs: add AGENTS.md with high-frequency pitfalls (read on start)
+
+ AGENTS.md | 30 ++++++++++++++++++++++++++++++
+ 1 file changed, 30 insertions(+)
+716349114eb22b7c4887dc9eb3ced19777315bc2 2026-07-26T14:06:20+08:00 docs: record build troubleshooting notes
+
+ BUILD_NOTES.md | 99 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 99 insertions(+)
+10d01463f621ed3efb8b63130f8dae18a4576b17 2026-07-25T23:43:27+08:00 feat: viewer page direction (h/v), range+drag multi-select, version 1.1 with version history
+
+ app/build.gradle                                   |  12 ++-
+ .../com/stockshot/manager/data/SettingsStore.kt    |   4 +
+ .../manager/ui/screen/ImageViewerScreen.kt         |  29 ++++--
+ .../com/stockshot/manager/ui/screen/MainScreen.kt  |  68 ++++++++++++-
+ .../stockshot/manager/ui/screen/SettingsScreen.kt  | 112 +++++++++++++++++++++
+ .../com/stockshot/manager/ui/vm/MainViewModel.kt   |  42 +++++++-
+ .../stockshot/manager/ui/vm/SettingsViewModel.kt   |   6 ++
+ .../java/com/stockshot/manager/util/BackupUtils.kt |   1 +
+ 8 files changed, 257 insertions(+), 17 deletions(-)
+39649d2e932118a8ec6d7831cdd2bb210a53b112 2026-07-25T15:27:47+08:00 feat: backup/restore (db-only) and dual-flavor coexisting APKs
+
+ app/build.gradle                                   |  19 ++
+ .../com/stockshot/manager/data/StockRepository.kt  |   5 +
+ .../java/com/stockshot/manager/data/dao/MarkDao.kt |   6 +
+ .../stockshot/manager/data/dao/StockRecordDao.kt   |   3 +
+ .../com/stockshot/manager/ui/screen/Dialogs.kt     | 144 ++++++++------
+ .../manager/ui/screen/ImageViewerScreen.kt         |  21 +-
+ .../stockshot/manager/ui/screen/SettingsScreen.kt  |  59 ++++++
+ .../java/com/stockshot/manager/ui/theme/Theme.kt   |   6 +-
+ .../stockshot/manager/ui/vm/SettingsViewModel.kt   |  72 +++++--
+ .../java/com/stockshot/manager/util/BackupUtils.kt | 218 +++++++++++++++++++++
+ .../java/com/stockshot/manager/util/ExportUtils.kt |   7 +-
+ .../com/stockshot/manager/util/StorageUtils.kt     |   4 +-
+ app/src/main/res/values/strings.xml                |   1 -
+ build-apk.bat                                      |  64 +++---
+ 14 files changed, 525 insertions(+), 104 deletions(-)
+f98c4f79a076fe4b1596727cae22c13ea4025da0 2026-07-25T13:21:43+08:00 feat: encode screenshots as lossless WebP (.webp), API-branched (WEBP_LOSSLESS on 30+, legacy WEBP q100 on 26-29)
+
+ .../java/com/stockshot/manager/automation/AutomationManager.kt | 10 +++++++++-
+ app/src/main/java/com/stockshot/manager/util/StorageUtils.kt   |  2 +-
+ 2 files changed, 10 insertions(+), 2 deletions(-)
+49bc3572fa1e37d34a9cda23741020efb5dfe823 2026-07-25T09:11:54+08:00 feat: configurable storage root (default public Downloads) via SAF folder picker + all-files access
+
+ app/src/main/AndroidManifest.xml                   |  3 +
+ .../com/stockshot/manager/data/SettingsStore.kt    |  3 +
+ .../java/com/stockshot/manager/ui/MainActivity.kt  | 13 ++++
+ .../stockshot/manager/ui/screen/SettingsScreen.kt  | 65 +++++++++++++++++
+ .../stockshot/manager/ui/vm/SettingsViewModel.kt   |  3 +
+ .../com/stockshot/manager/util/PermissionUtils.kt  | 14 ++++
+ .../com/stockshot/manager/util/StorageUtils.kt     | 81 +++++++++++++++++++---
+ 7 files changed, 174 insertions(+), 8 deletions(-)
+e48fc52fba33559da72e0bc6929b584888ececb4 2026-07-25T05:35:32+08:00 feat: quote source three-way (sina/provider/lan) + connection test, drop unused api_base_url/api_key
+
+ .gitignore                                         |   3 +
+ .../com/stockshot/manager/data/SettingsStore.kt    |  11 ++
+ .../com/stockshot/manager/net/StockQuoteSource.kt  | 151 +++++++++++++++++++++
+ .../stockshot/manager/ui/screen/SettingsScreen.kt  | 113 ++++++++++++---
+ .../com/stockshot/manager/ui/vm/MainViewModel.kt   |  12 +-
+ .../stockshot/manager/ui/vm/SettingsViewModel.kt   |  82 +++++++++--
+ 6 files changed, 339 insertions(+), 33 deletions(-)
+9c9d97a08c11604815f0e5cfc96b2b6459486c38 2026-07-25T05:01:23+08:00 baseline: stock screenshot manager full implementation + build-apk.bat
+
+ .gitignore                                         |  22 ++
+ app/build.gradle                                   |  97 ++++++
+ app/proguard-rules.pro                             |  13 +
+ app/src/main/AndroidManifest.xml                   |  59 ++++
+ .../java/com/stockshot/manager/StockShotApp.kt     |  25 ++
+ .../manager/automation/AutomationController.kt     | 117 ++++++++
+ .../manager/automation/AutomationManager.kt        | 243 +++++++++++++++
+ .../capture/MediaProjectionRequestActivity.kt      |  65 ++++
+ .../java/com/stockshot/manager/data/AppDatabase.kt |  37 +++
+ .../com/stockshot/manager/data/SettingsStore.kt    |  50 ++++
+ .../com/stockshot/manager/data/StockRepository.kt  |  79 +++++
+ .../stockshot/manager/data/dao/AppSettingDao.kt    |  20 ++
+ .../java/com/stockshot/manager/data/dao/MarkDao.kt |  27 ++
+ .../stockshot/manager/data/dao/StockRecordDao.kt   | 104 +++++++
+ .../stockshot/manager/data/entity/AppSetting.kt    |  12 +
+ .../java/com/stockshot/manager/data/entity/Mark.kt |  21 ++
+ .../stockshot/manager/data/entity/StockRecord.kt   |  22 ++
+ .../java/com/stockshot/manager/net/QuoteFetcher.kt |  71 +++++
+ .../manager/overlay/FloatControlWindow.kt          | 181 ++++++++++++
+ .../manager/service/ScreenCaptureService.kt        | 188 ++++++++++++
+ .../service/ScreenshotAccessibilityService.kt      | 193 ++++++++++++
+ .../java/com/stockshot/manager/ui/MainActivity.kt  |  73 +++++
+ .../com/stockshot/manager/ui/nav/ViewerHolder.kt   |  13 +
+ .../com/stockshot/manager/ui/screen/Dialogs.kt     | 126 ++++++++
+ .../manager/ui/screen/ImageViewerScreen.kt         | 207 +++++++++++++
+ .../com/stockshot/manager/ui/screen/MainScreen.kt  | 326 +++++++++++++++++++++
+ .../stockshot/manager/ui/screen/SearchScreen.kt    | 199 +++++++++++++
+ .../stockshot/manager/ui/screen/SettingsScreen.kt  | 182 ++++++++++++
+ .../java/com/stockshot/manager/ui/theme/Theme.kt   |  37 +++
+ .../com/stockshot/manager/ui/vm/MainViewModel.kt   | 187 ++++++++++++
+ .../com/stockshot/manager/ui/vm/SearchViewModel.kt |  59 ++++
+ .../stockshot/manager/ui/vm/SettingsViewModel.kt   |  78 +++++
+ .../com/stockshot/manager/ui/vm/ViewerSession.kt   |  13 +
+ .../java/com/stockshot/manager/util/AppLogger.kt   |  14 +
+ .../java/com/stockshot/manager/util/ExportUtils.kt | 136 +++++++++
+ .../com/stockshot/manager/util/PermissionUtils.kt  |  21 ++
+ .../java/com/stockshot/manager/util/ProfitCalc.kt  |  30 ++
+ .../com/stockshot/manager/util/StorageUtils.kt     |  38 +++
+ .../main/res/drawable/ic_launcher_background.xml   |  10 +
+ .../main/res/drawable/ic_launcher_foreground.xml   |  24 ++
+ app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml |   5 +
+ .../res/mipmap-anydpi-v26/ic_launcher_round.xml    |   5 +
+ app/src/main/res/values/colors.xml                 |  10 +
+ app/src/main/res/values/strings.xml                |   6 +
+ app/src/main/res/values/themes.xml                 |  12 +
+ .../main/res/xml/accessibility_service_config.xml  |  11 +
+ app/src/main/res/xml/backup_rules.xml              |   5 +
+ app/src/main/res/xml/data_extraction_rules.xml     |   7 +
+ build-apk.bat                                      |  84 ++++++
+ build.gradle                                       |   6 +
+ gradle.properties                                  |   7 +
+ gradle/wrapper/gradle-wrapper.jar                  | Bin 0 -> 43462 bytes
+ gradle/wrapper/gradle-wrapper.properties           |   7 +
+ gradlew                                            | 249 ++++++++++++++++
+ gradlew.bat                                        |  92 ++++++
+ keystore/stockshot.jks                             | Bin 0 -> 2734 bytes
+ settings.gradle                                    |  23 ++
+ 57 files changed, 3948 insertions(+)

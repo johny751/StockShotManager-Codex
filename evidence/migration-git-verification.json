@@ -1,0 +1,12 @@
+{
+  "verified_at": "2026-11-25T07:25:22.278344+08:00",
+  "fsck_exit_code": 0,
+  "fsck_output": "dangling blob 6a69a30b673e2747fa8f8b4d78085682e99c421d\n",
+  "working_tree_status_matches_source": true,
+  "working_tree_status": "# branch.oid 792f01d1cf25054bbd0829c5a7fef505c85a8fb4\n# branch.head main\n? _analyze.py\n",
+  "reachable_commit_count": 21,
+  "source_head": "792f01d1cf25054bbd0829c5a7fef505c85a8fb4",
+  "copied_head": "792f01d1cf25054bbd0829c5a7fef505c85a8fb4",
+  "index_preservation": "Read-only git status refreshed the copied stat-cache; restored the original byte-identical index after verification. Future verification git commands disable optional locks.",
+  "original_index_sha256": "c526a0caae9b2d34668ef874df2f5ba251d3800d68c3afb8291b672fffb5b0f1"
+}

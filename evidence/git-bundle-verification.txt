@@ -1,0 +1,6 @@
+The bundle contains these 2 refs:
+792f01d1cf25054bbd0829c5a7fef505c85a8fb4 refs/heads/main
+792f01d1cf25054bbd0829c5a7fef505c85a8fb4 HEAD
+The bundle records a complete history.
+The bundle uses this hash algorithm: sha1
+D:/Program/Projects/Android/projects/ControlMonitor/StockShotManager/build/codex-transfer/package-20261125_071840/history/StockShotManager.bundle is okay

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.stockshot.manager.util.DiagnosticFileProviderTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-28T11:48:51" hostname="BA-NOTE" time="0.335">
+  <properties/>
+  <testcase name="filesOutsideTheDiagnosticCacheCannotBeShared" classname="com.stockshot.manager.util.DiagnosticFileProviderTest" time="0.18"/>
+  <testcase name="logsCanBeReadUsingTheCurrentEditionsProvider" classname="com.stockshot.manager.util.DiagnosticFileProviderTest" time="0.155"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
