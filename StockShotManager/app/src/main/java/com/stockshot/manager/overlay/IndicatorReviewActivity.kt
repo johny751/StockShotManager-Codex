@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Color
 import android.os.Bundle
 import android.view.View
 import android.widget.ArrayAdapter
@@ -56,11 +55,11 @@ class IndicatorReviewActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         sampleStore = IndicatorSampleStore(applicationContext)
         val column = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(8), dp(12), dp(8)) }
-        column.addView(TextView(this).apply { text = "指标检测依据"; textSize = 21f; setTextColor(Color.BLACK) })
+        column.addView(TextView(this).apply { text = "指标检测依据"; textSize = 21f })
         image = IndicatorImageView(this)
         column.addView(image, LinearLayout.LayoutParams(-1, 0, 1f))
         val scroll = ScrollView(this)
-        report = TextView(this).apply { textSize = 13f; setTextColor(Color.BLACK); setTextIsSelectable(true); text = "正在读取检测结果…" }
+        report = TextView(this).apply { textSize = 13f; setTextIsSelectable(true); text = "正在读取检测结果…" }
         scroll.addView(report)
         column.addView(scroll, LinearLayout.LayoutParams(-1, dp(190)))
         actions = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
