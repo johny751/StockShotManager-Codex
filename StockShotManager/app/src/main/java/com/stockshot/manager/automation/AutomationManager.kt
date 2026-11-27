@@ -4,7 +4,8 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.os.Build
 import android.widget.Toast
-import com.stockshot.indicator.IndicatorDetector
+import com.stockshot.indicator.DetectionStatus
+import com.stockshot.manager.indicator.IndicatorDetectionOptions
 import com.stockshot.manager.StockShotApp
 import com.stockshot.manager.data.SettingsStore
 import com.stockshot.manager.data.StockRepository
@@ -144,18 +145,7 @@ object AutomationManager {
             SettingsStore.KEY_CLOSE_CROSSHAIR_MODE,
             SettingsStore.DEFAULT_CLOSE_CROSSHAIR_MODE
         )
-        val dotTolScale = settings.getFloat(
-            SettingsStore.KEY_DOT_TOL_SCALE,
-            SettingsStore.DEFAULT_DOT_TOL_SCALE
-        )
-        val minConfidence = settings.getFloat(
-            SettingsStore.KEY_MIN_CONFIDENCE,
-            SettingsStore.DEFAULT_MIN_CONFIDENCE
-        )
-        val capWin = settings.getFloat(
-            SettingsStore.KEY_CAPITAL_WINDOW_SCALE,
-            SettingsStore.DEFAULT_CAPITAL_WINDOW_SCALE
-        )
+        val detectionOptions = IndicatorDetectionOptions.fromSettings(settings).copy(requireYellow = requireYellow)
         val nodeCfg = ScreenshotAccessibilityService.NodeQueryConfig(
             regionLeft = settings.getFloat(SettingsStore.KEY_NODE_REGION_LEFT, SettingsStore.DEFAULT_NODE_REGION_LEFT),
             regionTop = settings.getFloat(SettingsStore.KEY_NODE_REGION_TOP, SettingsStore.DEFAULT_NODE_REGION_TOP),
@@ -171,6 +161,8 @@ object AutomationManager {
         val seenOnce = HashSet<String>()
         var count = 0
         var marked = 0
+        var detected = 0
+        var undecidable = 0
 
         try {
             while (currentCoroutineContext().isActive) {
@@ -227,9 +219,10 @@ object AutomationManager {
                 // 3.5) 命中识别（仅本轮启用时）
                 var hit = false
                 var buyPrice: Double? = null
+                var recognitionNote = ""
                 if (autoDetect) {
                     val det = try {
-                        IndicatorDetector.detectIndicatorPattern(bitmap, requireYellow, dotTolScale, minConfidence, capWin)
+                        detectionOptions.detect(bitmap)
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
@@ -239,15 +232,22 @@ object AutomationManager {
                     if (det != null) {
                         AppLogger.i(
                             TAG,
-                            "识别 $code: matched=${det.matched} trendDots=${det.trendDotsMatched} " +
+                            "识别 $code: status=${det.status} trend=${det.trendStatus} capitalStatus=${det.capitalStatus} " +
+                                "method=${det.diagnostics.capitalMethod}/${det.diagnostics.capitalRule} selection=${det.diagnostics.signalSelection} " +
+                                "stats=${det.diagnostics.capitalStats} matched=${det.matched} trendDots=${det.trendDotsMatched} " +
                                 "capital=${det.capitalLinesMatched} conf=${det.confidence} " +
                                 "red=${det.redPoint} green=${det.greenPoint} reason=${det.reason}"
                         )
                     }
+                    if (det == null || det.status == DetectionStatus.UNKNOWN) {
+                        undecidable++
+                        recognitionNote = "；无法判断：" + (det?.reason ?: "检测异常")
+                    } else if (!det.matched) recognitionNote = "；不符合：" + det.reason
                     val red = det?.redPoint
                     val green = det?.greenPoint
                     if (det != null && det.matched && red != null && green != null) {
                         hit = true
+                        detected++
                         val w = bitmap.width
                         val h = bitmap.height
                         // 红绿点中点 -> 屏幕像素（bitmap 即全屏分辨率）
@@ -355,7 +355,7 @@ object AutomationManager {
 
                 _progress.value = _progress.value.copy(
                     running = true, count = count, marked = marked, lastCode = code,
-                    message = if (hit) "已采集 $count（命中 $marked）：$code" else "已采集 $count：$code"
+                    message = if (autoDetect) "已采集 $count（命中 $detected，标记 $marked，无法判断 $undecidable）：$code$recognitionNote" else "已采集 $count：$code"
                 )
 
                 // 6.8) 读价后关闭十字光标 + 关闭拦路弹框，避免误点/遮挡影响下一只

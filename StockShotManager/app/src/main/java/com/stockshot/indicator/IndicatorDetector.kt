@@ -5,7 +5,9 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PointF
+import android.graphics.RectF
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
 
@@ -20,11 +22,27 @@ data class IndicatorMatchResult(
     val purpleYRatio: Float?,
     val capitalGreenYRatio: Float?,
     val reason: String,
-    val dotMatchPath: String? = null
+    val dotMatchPath: String? = null,
+    val status: DetectionStatus = if (matched) DetectionStatus.MATCH else DetectionStatus.NO_MATCH,
+    val trendStatus: DetectionStatus = if (trendDotsMatched) DetectionStatus.MATCH else DetectionStatus.NO_MATCH,
+    val capitalStatus: DetectionStatus = if (capitalLinesMatched) DetectionStatus.MATCH else DetectionStatus.NO_MATCH,
+    val diagnostics: IndicatorDiagnostics = IndicatorDiagnostics(),
 )
 
+/**
+ * Fixed-layout, explainable image rules, not a calibrated prediction model.
+ * The expected panel order is trend above capital. Structural checks reject obvious
+ * mismatches; they do not establish the identity of every possible quote-app layout.
+ */
 object IndicatorDetector {
     private const val MAX_ANALYSIS_WIDTH = 720
+    private const val MIN_INTERVAL_COLUMNS = 3
+
+    private data class Region(val left: Int, val top: Int, val right: Int, val bottom: Int) {
+        val width: Int get() = right - left
+        val height: Int get() = bottom - top
+        fun normalized(w: Int, h: Int) = RectF(left.toFloat() / w, top.toFloat() / h, right.toFloat() / w, bottom.toFloat() / h)
+    }
 
     private data class Blob(
         val x: Int,
@@ -33,195 +51,531 @@ object IndicatorDetector {
         val height: Int,
         val area: Int,
         val centerX: Float,
-        val centerY: Float
+        val centerY: Float,
+        val pixels: IntArray,
+        val split: Boolean = false,
     )
 
+    private data class Dot(val blob: Blob, val color: IndicatorDotColor, val strict: Boolean)
+    private data class DotPair(val red: Dot, val green: Dot, val dx: Float, val tolerance: Float, val path: String) {
+        val signalX: Float get() = red.blob.centerX
+    }
+    private data class Baseline(val color: Int, val firstRow: Int, val lastRow: Int) {
+        val center: Float get() = (firstRow + lastRow) / 2f
+    }
     private data class Track(val medianY: Float?, val columns: Int)
-
-    private data class DotMatch(
-        val red: Blob,
-        val green: Blob,
-        val dx: Float,
-        val tol: Float,
-        val path: String
+    private data class CapitalEvaluation(
+        val status: DetectionStatus,
+        val window: Region,
+        val stats: CapitalStats,
+        val columns: List<CapitalColumnDiagnostic>,
+        val purple: Track,
+        val green: Track,
+        val lineScore: Float,
+        val reason: String,
+    )
+    private data class PairEvaluation(
+        val pair: DotPair,
+        val capital: CapitalEvaluation,
+        val status: DetectionStatus,
+        val score: Float,
+        val reason: String,
     )
 
     /**
-     * Detects the combined indicator pattern in a quote screenshot.
-     * The trend panel is scanned across its complete chart width. No time/x position is fixed.
-     *
-     * requireYellow=true 时资金博弈需紫、黄两条都在绿线上；否则仅要求紫线在绿线上（默认）。
+     * median preserves the independent per-colour region-median comparison; its
+     * diagnostic column counts do not determine that method's result.
+     * pointwise/all and majority inspect [left, signalX), never the signal column.
+     * pointwise/signal inspects only floor(signalX). No missing sample is interpolated.
+     * any checks pairs chronologically and stops at the first full (including score) match.
      */
     fun detectIndicatorPattern(
         source: Bitmap,
         requireYellow: Boolean = false,
         dotToleranceScale: Float = 1f,
         minConfidence: Float = 0f,
-        capitalWindowScale: Float = 0.4f
+        capitalWindowScale: Float = 0.4f,
+        capitalMethod: String = "median",
+        capitalRule: String = "all",
+        signalSelection: String = "any",
+        majorityThreshold: Float = 0.9f,
     ): IndicatorMatchResult {
+        val method = capitalMethod.lowercase(java.util.Locale.ROOT)
+        val rule = capitalRule.lowercase(java.util.Locale.ROOT)
+        val selection = signalSelection.lowercase(java.util.Locale.ROOT)
+        var diagnostics = IndicatorDiagnostics(
+            capitalMethod = method, capitalRule = rule, signalSelection = selection,
+            majorityThreshold = majorityThreshold,
+        )
+        if (method !in setOf("median", "pointwise") || rule !in setOf("all", "majority", "signal") ||
+            selection !in setOf("latest", "any") || !dotToleranceScale.isFinite() ||
+            !minConfidence.isFinite() || !capitalWindowScale.isFinite() ||
+            !majorityThreshold.isFinite() || majorityThreshold !in 0f..1f) {
+            return unknown("无法判断：识别参数无效", diagnostics)
+        }
         if (source.width < 240 || source.height < 500) {
-            return failed("图片尺寸过小，无法识别")
+            return unknown("无法判断：图片尺寸过小", diagnostics)
         }
         val bitmap = scaleForAnalysis(source)
-        val w = bitmap.width
-        val h = bitmap.height
-        val aspect = h.toFloat() / w
-        if (aspect !in 1.75f..2.65f) {
+        try {
+            val w = bitmap.width
+            val h = bitmap.height
+            if (h.toFloat() / w !in 1.75f..2.65f) {
+                return unknown("无法判断：截图长宽比不适合当前固定版式", diagnostics)
+            }
+            val chartRight = (w * 0.685f).toInt().coerceIn(1, w)
+            val trend = Region(0, (h * 0.565f).toInt(), chartRight, (h * 0.670f).toInt())
+            val capital = Region((w * 0.02f).toInt(), (h * 0.700f).toInt(), chartRight, (h * 0.782f).toInt())
+            diagnostics = diagnostics.copy(trendRegion = trend.normalized(w, h), capitalRegion = capital.normalized(w, h))
+            // Cache classifications once: every candidate pair sees the identical image evidence.
+            val pixels = IntArray(w * h)
+            bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
+            val classes = ByteArray(pixels.size) { classify(pixels[it]).toByte() }
+            val trendBaselines = findBaselines(classes, w, trend)
+            val capitalBaselines = findBaselines(classes, w, capital)
+            val trendStructure = hasTrendStructure(trendBaselines, trend.height)
+            val capitalHasTrendStructure = hasTrendStructure(capitalBaselines, capital.height)
+            val dots = collectDots(classes, w, h, trend, trendBaselines)
+            val pairs = pairDots(dots, chartRight, trend.height, dotToleranceScale.coerceIn(0.1f, 5f))
+            val messages = mutableListOf<String>()
+            if (!trendStructure) messages += "趋势区域缺少可核对的低位绿基线和另一条分离的蓝/红基线，可能是布局变化、遮挡或截图不完整。"
+            if (capitalHasTrendStructure) messages += "资金区域出现趋势面板式多条水平基线，可能是两个面板顺序错位。"
+            messages += "固定版式要求趋势在上、资金在下；结构校验只能拒绝明显异常，不能保证识别所有版式。"
+            if (method == "median") messages += "方案一比较两种颜色各自的区域中位数；逐列满足/反例/缺失统计仅供诊断，不决定方案一结果。"
+            diagnostics = diagnostics.copy(
+                dotCandidates = dots.map { it.toDiagnostic(trend, w, h) },
+                trendPanelValid = trendStructure,
+                capitalPanelValid = !capitalHasTrendStructure,
+                candidatePairCount = pairs.size,
+                messages = messages,
+            )
+            if (!trendStructure || capitalHasTrendStructure) {
+                return unknown("无法判断：指标面板结构或顺序与当前识别版式不符", diagnostics.copy(capitalPanelValid = false))
+            }
+            if (pairs.isEmpty()) {
+                return IndicatorMatchResult(
+                    matched = false, trendDotsMatched = false, capitalLinesMatched = false, confidence = 0f,
+                    redPoint = null, greenPoint = null, purpleYRatio = null, capitalGreenYRatio = null,
+                    reason = "不符合：未找到可配对的底部红绿信号；没有信号位置，资金线未判断",
+                    status = DetectionStatus.NO_MATCH, trendStatus = DetectionStatus.NO_MATCH,
+                    capitalStatus = DetectionStatus.UNKNOWN,
+                    diagnostics = diagnostics.copy(messages = messages + "候选点不等于已配对信号；无点时不再回退到图右侧判断资金。"),
+                )
+            }
+            val ordered = if (selection == "latest") {
+                listOf(pairs.maxWithOrNull(compareBy<DotPair> { it.signalX }.thenBy { -it.dx })!!)
+            } else pairs.sortedWith(compareBy<DotPair> { it.signalX }.thenBy { it.dx })
+            var selected: PairEvaluation? = null
+            var firstUnknown: PairEvaluation? = null
+            var checked = 0
+            for (pair in ordered) {
+                val evaluation = evaluateCapital(
+                    classes, w, h, capital, pair.signalX, requireYellow,
+                    capitalWindowScale.coerceIn(0.1f, 1f), method, rule, majorityThreshold,
+                )
+                val dotScore = (1f - pair.dx / pair.tolerance).coerceIn(0f, 1f)
+                val score = if (evaluation.status == DetectionStatus.MATCH) {
+                    (0.55f * dotScore + 0.45f * evaluation.lineScore).coerceIn(0f, 1f)
+                } else (0.4f * dotScore + 0.3f * evaluation.lineScore).coerceIn(0f, 0.69f)
+                val status = if (evaluation.status == DetectionStatus.MATCH && score < minConfidence.coerceIn(0f, 1f)) {
+                    DetectionStatus.NO_MATCH
+                } else evaluation.status
+                val reason = if (evaluation.status == DetectionStatus.MATCH && status == DetectionStatus.NO_MATCH) {
+                    "不符合：红绿点与资金规则满足，但规则分数低于设置门槛"
+                } else evaluation.reason
+                val current = PairEvaluation(pair, evaluation, status, score, reason)
+                checked++
+                if (selected == null) selected = current
+                if (status == DetectionStatus.UNKNOWN && firstUnknown == null) firstUnknown = current
+                if (status == DetectionStatus.MATCH) {
+                    selected = current
+                    break
+                }
+            }
+            if (selected!!.status != DetectionStatus.MATCH && firstUnknown != null) selected = firstUnknown
+            val chosen = selected!!
+            val cap = chosen.capital
+            val red = chosen.pair.red.blob
+            val green = chosen.pair.green.blob
+            val overallReason = if (selection == "any" && chosen.status != DetectionStatus.MATCH && checked > 1) {
+                (if (chosen.status == DetectionStatus.UNKNOWN) "无法判断：所有信号均未确认满足，部分信号证据不足。" else "不符合：所有可配对信号均未满足。") + chosen.reason
+            } else chosen.reason
+            return IndicatorMatchResult(
+                matched = chosen.status == DetectionStatus.MATCH,
+                trendDotsMatched = true,
+                capitalLinesMatched = cap.status == DetectionStatus.MATCH,
+                confidence = chosen.score,
+                redPoint = PointF(red.centerX / w, (red.centerY + trend.top) / h),
+                greenPoint = PointF(green.centerX / w, (green.centerY + trend.top) / h),
+                purpleYRatio = cap.purple.medianY?.let { (it + capital.top) / h },
+                capitalGreenYRatio = cap.green.medianY?.let { (it + capital.top) / h },
+                reason = overallReason,
+                dotMatchPath = chosen.pair.path,
+                status = chosen.status,
+                trendStatus = DetectionStatus.MATCH,
+                capitalStatus = cap.status,
+                diagnostics = diagnostics.copy(
+                    capitalWindow = cap.window.normalized(w, h), capitalStats = cap.stats,
+                    columns = cap.columns, checkedPairCount = checked,
+                    messages = messages + cap.reason + "置信度为手工规则分数，不是正确率或成功概率。",
+                ),
+            )
+        } finally {
             if (bitmap !== source) bitmap.recycle()
-            return failed("截图长宽比与已标定版式不符")
         }
+    }
 
-        val chartRight = (w * 0.685f).toInt().coerceIn(1, w)
-        val trendY0 = (h * 0.565f).toInt()
-        val trendY1 = (h * 0.670f).toInt()
-        val trendH = trendY1 - trendY0
-        val redMask = ByteArray(chartRight * trendH)
-        val greenMask = ByteArray(chartRight * trendH)
+    private fun unknown(reason: String, diagnostics: IndicatorDiagnostics) = IndicatorMatchResult(
+        false, false, false, 0f, null, null, null, null, reason,
+        status = DetectionStatus.UNKNOWN, trendStatus = DetectionStatus.UNKNOWN,
+        capitalStatus = DetectionStatus.UNKNOWN, diagnostics = diagnostics,
+    )
 
-        for (y in trendY0 until trendY1) {
-            val row = (y - trendY0) * chartRight
-            for (x in 0 until chartRight) {
-                when (classify(bitmap.getPixel(x, y))) {
-                    1 -> redMask[row + x] = 1
-                    2 -> greenMask[row + x] = 1
+    private fun Dot.toDiagnostic(region: Region, w: Int, h: Int) = IndicatorDotCandidate(
+        RectF(blob.x.toFloat() / w, (blob.y + region.top).toFloat() / h,
+            (blob.x + blob.width).toFloat() / w, (blob.y + blob.height + region.top).toFloat() / h),
+        PointF(blob.centerX / w, (blob.centerY + region.top) / h), color, blob.split,
+    )
+
+    /** Only long, nearly continuous colour rows count as baselines; short text cannot supply one. */
+    private fun findBaselines(classes: ByteArray, w: Int, region: Region): List<Baseline> {
+        val result = mutableListOf<Baseline>()
+        for (color in intArrayOf(1, 2, 5)) {
+            var start = -1
+            for (y in 0..region.height) {
+                var count = 0
+                var first = region.width
+                var last = -1
+                if (y < region.height) {
+                    for (x in 0 until region.width) {
+                        if (classes[(y + region.top) * w + x + region.left].toInt() == color) {
+                            count++
+                            first = min(first, x)
+                            last = x
+                        }
+                    }
+                }
+                val continuous = last >= first && count >= region.width * 0.45f &&
+                    count >= (last - first + 1) * 0.80f
+                if (continuous && start < 0) start = y
+                if (!continuous && start >= 0) {
+                    // A broad solid band is an overlay/filled shape, not a thin chart baseline.
+                    if (y - start <= max(4, (region.height * 0.035f).toInt())) result += Baseline(color, start, y - 1)
+                    start = -1
                 }
             }
         }
-
-        val minArea = max(3, (w * h * 0.000002f).toInt())
-        val maxArea = max(80, (w * h * 0.0003f).toInt())
-        val maxBlobW = max(14, (w * 0.025f).toInt())
-        val maxBlobH = max(14, (h * 0.012f).toInt())
-        fun isDot(blob: Blob): Boolean {
-            val ratio = blob.width.toFloat() / max(1, blob.height)
-            val fill = blob.area.toFloat() / max(1, blob.width * blob.height)
-            return blob.y > trendH * 0.58f && blob.width <= maxBlobW &&
-                blob.height <= maxBlobH && ratio in 0.25f..4f && fill >= 0.22f
-        }
-
-        // 宽容差点：底部绿点常被连成宽色块，严格 isDot 会漏掉，这里放宽宽/高与填充率。
-        val relaxedMaxBlobW = max(28, (w * 0.055f).toInt())
-        val relaxedMaxBlobH = max(20, (h * 0.020f).toInt())
-        fun isRelaxedDot(blob: Blob): Boolean {
-            val ratio = blob.width.toFloat() / max(1, blob.height)
-            val fill = blob.area.toFloat() / max(1, blob.width * blob.height)
-            return blob.y > trendH * 0.55f && blob.width <= relaxedMaxBlobW &&
-                blob.height <= relaxedMaxBlobH && ratio in 0.2f..6f && fill >= 0.18f
-        }
-
-        val allReds = findComponents(redMask, chartRight, trendH, minArea, maxArea)
-        val allGreens = findComponents(greenMask, chartRight, trendH, minArea, maxArea)
-        val reds = allReds.filter(::isDot)
-        val greens = allGreens.filter(::isDot)
-        val redsRelaxed = allReds.filter(::isRelaxedDot)
-        val greensRelaxed = allGreens.filter(::isRelaxedDot)
-
-        val tolScale = dotToleranceScale.coerceIn(0.1f, 5f)
-        val tolerance = max(4f, chartRight * 0.012f) * tolScale
-        val relaxedTolerance = max(6f, chartRight * 0.02f) * tolScale
-        val band = trendH * 0.22f
-        // B 为主（严格红点锚定 + 宽容差绿块），C 兜底（双宽容差）；A 最严格时优先。
-        val match = pairDots(reds, greens, tolerance, "A_strict", Float.MAX_VALUE)
-            ?: pairDots(reds, greensRelaxed, tolerance, "B_relaxed_green", band)
-            ?: pairDots(redsRelaxed, greensRelaxed, relaxedTolerance, "C_relaxed_both", band)
-
-        val bestRed = match?.red
-        val bestGreen = match?.green
-        val bestDx = match?.dx ?: Float.MAX_VALUE
-        val usedTol = match?.tol ?: tolerance
-        val dotsMatched = match != null
-
-        val plotY0 = (h * 0.700f).toInt()
-        val plotY1 = (h * 0.782f).toInt()
-        val plotX0 = (w * 0.02f).toInt()
-        // 只分析红绿点左侧一段时间的资金线数据，忽略红绿点右侧的数据
-        val dotX = bestRed?.centerX ?: bestGreen?.centerX
-        val windowRight = (dotX?.toInt() ?: chartRight).coerceIn(plotX0 + 1, chartRight)
-        val capWinScale = capitalWindowScale.coerceIn(0.1f, 1f)
-        val windowSpan = windowRight - plotX0
-        val windowLeft = (windowRight - windowSpan * capWinScale).toInt().coerceIn(plotX0, windowRight - 1)
-        val windowCols = max(1, windowRight - windowLeft)
-        val purpleTrack = collectTrack(bitmap, windowLeft, windowRight, plotY0, plotY1, 3)
-        val capitalGreenTrack = collectTrack(bitmap, windowLeft, windowRight, plotY0, plotY1, 2)
-        val yellowTrack = collectTrack(bitmap, windowLeft, windowRight, plotY0, plotY1, 4)
-        val minColumns = max(20, (windowCols * 0.08f).toInt())
-        val requiredGap = max(3f, h * 0.003f)
-        val greenReady = capitalGreenTrack.medianY != null && capitalGreenTrack.columns >= minColumns
-        val purpleAbove = purpleTrack.medianY != null && greenReady &&
-            purpleTrack.columns >= minColumns &&
-            purpleTrack.medianY + requiredGap < capitalGreenTrack.medianY!!
-        val yellowAbove = yellowTrack.medianY != null && greenReady &&
-            yellowTrack.columns >= minColumns &&
-            yellowTrack.medianY + requiredGap < capitalGreenTrack.medianY!!
-        val capitalMatched = if (requireYellow) purpleAbove && yellowAbove else purpleAbove
-
-        val dotConfidence = if (dotsMatched) (1f - bestDx / usedTol).coerceIn(0f, 1f) else 0f
-        val lineGap = if (capitalMatched) {
-            (capitalGreenTrack.medianY!! - purpleTrack.medianY!!) / max(1f, (plotY1 - plotY0).toFloat())
-        } else 0f
-        val lineCoverage = min(purpleTrack.columns, capitalGreenTrack.columns).toFloat() /
-            max(1, windowCols)
-        val lineConfidence = (lineGap * 2.2f + lineCoverage * 0.35f).coerceIn(0f, 1f)
-        val confidence = if (dotsMatched && capitalMatched) {
-            (dotConfidence * 0.55f + lineConfidence * 0.45f).coerceIn(0f, 1f)
-        } else (dotConfidence * 0.4f + lineConfidence * 0.3f).coerceIn(0f, 0.69f)
-        val baseMatched = dotsMatched && capitalMatched
-        val confGate = minConfidence.coerceIn(0f, 1f)
-        val matched = baseMatched && confidence >= confGate
-
-        val capitalReason = if (requireYellow) "资金博弈（紫、黄两条均在绿线上）" else "资金博弈（紫线在绿线上）"
-        val gatedReason = "\u4e0d\u7b26\u5408\uff1a\u7f6e\u4fe1\u5ea6\u4f4e\u4e8e\u9608\u503c"
-        val reason = if (baseMatched && !matched) gatedReason else when {
-            dotsMatched && capitalMatched -> "符合：底部红绿点横向重合，且" + capitalReason
-            !dotsMatched && !capitalMatched -> "不符合：未找到重合的底部红绿点，资金线位置也不符合"
-            !dotsMatched -> "不符合：未找到横向重合的底部红绿点"
-            else -> "不符合：" + capitalReason + " 未满足"
-        }
-        val result = IndicatorMatchResult(
-            matched = matched,
-            trendDotsMatched = dotsMatched,
-            capitalLinesMatched = capitalMatched,
-            confidence = confidence,
-            redPoint = bestRed?.let { PointF(it.centerX / w, (it.centerY + trendY0) / h) },
-            greenPoint = bestGreen?.let { PointF(it.centerX / w, (it.centerY + trendY0) / h) },
-            purpleYRatio = purpleTrack.medianY?.let { (it + plotY0) / h },
-            capitalGreenYRatio = capitalGreenTrack.medianY?.let { (it + plotY0) / h },
-            reason = reason,
-            dotMatchPath = match?.path
-        )
-        if (bitmap !== source) bitmap.recycle()
         return result
     }
 
-    private fun pairDots(
-        reds: List<Blob>,
-        greens: List<Blob>,
-        tolerance: Float,
-        path: String,
-        verticalBand: Float
-    ): DotMatch? {
-        var bestRed: Blob? = null
-        var bestGreen: Blob? = null
-        var bestDx = Float.MAX_VALUE
-        var bestScore = Float.NEGATIVE_INFINITY
-        for (red in reds) {
-            for (green in greens) {
-                val dx = abs(red.centerX - green.centerX)
-                if (dx > tolerance) continue
-                if (abs(red.centerY - green.centerY) > verticalBand) continue
-                val score = (red.centerY + green.centerY) * 2f - dx
-                if (score > bestScore) {
-                    bestScore = score
-                    bestDx = dx
-                    bestRed = red
-                    bestGreen = green
+    private fun hasTrendStructure(baselines: List<Baseline>, height: Int): Boolean =
+        baselines.any { green -> green.color == 2 && green.center >= height * 0.55f &&
+            baselines.any { other -> other.color in intArrayOf(1, 5) && abs(other.center - green.center) >= max(4f, height * 0.035f) }
+        }
+
+    private fun collectDots(
+        classes: ByteArray, w: Int, h: Int, region: Region, baselines: List<Baseline>,
+    ): List<Dot> {
+        val minArea = max(3, (w * h * 0.000002f).toInt())
+        val maxArea = max(80, (w * h * 0.0003f).toInt())
+        val strictW = max(14, (w * 0.025f).toInt())
+        val strictH = max(14, (h * 0.012f).toInt())
+        val relaxedW = max(28, (w * 0.055f).toInt())
+        val relaxedH = max(20, (h * 0.020f).toInt())
+        val result = mutableListOf<Dot>()
+        for (color in 1..2) {
+            val mask = ByteArray(region.width * region.height)
+            for (y in 0 until region.height) for (x in 0 until region.width) {
+                if (classes[(y + region.top) * w + x + region.left].toInt() == color) mask[y * region.width + x] = 1
+            }
+            // Remove true chart baselines before components, so an attached marker is not
+            // discarded merely because the whole baseline exceeds maxArea.
+            val removedRows = baselines.filter { it.color == color }.flatMap { it.firstRow..it.lastRow }.toSet()
+            for (y in removedRows) for (x in 0 until region.width) mask[y * region.width + x] = 0
+            val components = findComponents(mask, region.width, region.height)
+            for (component in components) {
+                val pieces = if (component.width > strictW && component.height <= relaxedH) {
+                    splitConnectedMarkers(component, region.width, strictW)
+                } else listOf(component)
+                for (raw in pieces) {
+                    val touchesRemovedLine = removedRows.any { it in (raw.y - 1)..(raw.y + raw.height) }
+                    val blob = if (touchesRemovedLine) raw.copy(split = true) else raw
+                    if (blob.area !in minArea..maxArea) continue
+                    if (blob.y <= region.height * 0.55f || blob.width < 2 || blob.height < 2) continue
+                    val ratio = blob.width.toFloat() / blob.height
+                    val fill = blob.area.toFloat() / (blob.width * blob.height)
+                    val strict = blob.y > region.height * 0.58f && blob.width <= strictW && blob.height <= strictH &&
+                        ratio in 0.30f..3.5f && fill >= 0.25f
+                    val relaxed = blob.width <= relaxedW && blob.height <= relaxedH &&
+                        ratio in 0.25f..4.5f && fill >= 0.22f
+                    if (!strict && !relaxed) continue
+                    // Long, thin fragments and one-pixel line crossings are not dot markers.
+                    if (min(blob.width, blob.height) <= 2 && max(blob.width, blob.height) >= 8) continue
+                    result += Dot(blob, if (color == 1) IndicatorDotColor.RED else IndicatorDotColor.GREEN, strict)
                 }
             }
         }
-        val r = bestRed ?: return null
-        val g = bestGreen ?: return null
-        return DotMatch(r, g, bestDx, tolerance, path)
+        return result.sortedWith(compareBy<Dot> { it.blob.centerX }.thenBy { it.color.ordinal })
     }
+
+    /** Split only at observed thin bridges between thick lobes; never invent regularly spaced dots. */
+    private fun splitConnectedMarkers(blob: Blob, stride: Int, nominalWidth: Int): List<Blob> {
+        val counts = IntArray(blob.width)
+        blob.pixels.forEach { counts[it % stride - blob.x]++ }
+        val peak = counts.maxOrNull() ?: return listOf(blob)
+        if (peak < 4) return listOf(blob)
+        val bridgeMax = max(1, (peak * 0.35f).toInt())
+        val lobes = mutableListOf<IntRange>()
+        var start = -1
+        for (x in 0..counts.size) {
+            val thick = x < counts.size && counts[x] > bridgeMax
+            if (thick && start < 0) start = x
+            if (!thick && start >= 0) {
+                if (x - start >= 2) lobes += start until x
+                start = -1
+            }
+        }
+        if (lobes.size < 2 || lobes.any { it.last - it.first + 1 > nominalWidth * 2 }) return listOf(blob)
+        val cuts = lobes.zipWithNext { left, right -> (left.last + right.first + 1) / 2 }
+        val pieces = mutableListOf<Blob>()
+        var left = 0
+        for (right in cuts + blob.width) {
+            val points = blob.pixels.filter { (it % stride - blob.x) in left until right }.toIntArray()
+            if (points.isNotEmpty()) pieces += toBlob(points, stride, split = true)
+            left = right
+        }
+        return pieces
+    }
+
+    private fun pairDots(dots: List<Dot>, chartRight: Int, trendHeight: Int, toleranceScale: Float): List<DotPair> {
+        val reds = dots.filter { it.color == IndicatorDotColor.RED }
+        val greens = dots.filter { it.color == IndicatorDotColor.GREEN }
+        val strictTolerance = max(4f, chartRight * 0.012f) * toleranceScale
+        val relaxedTolerance = max(6f, chartRight * 0.020f) * toleranceScale
+        val verticalBand = max(8f, trendHeight * 0.22f)
+        return reds.mapNotNull { red ->
+            // Each red anchor defines one chronological signal. Pick its best nearby green
+            // candidate so the same red marker cannot create several contradictory signals.
+            greens.mapNotNull { green ->
+                val dx = abs(red.blob.centerX - green.blob.centerX)
+                val tolerance = if (red.strict) strictTolerance else relaxedTolerance
+                if (dx > tolerance || abs(red.blob.centerY - green.blob.centerY) > verticalBand) null
+                else DotPair(red, green, dx, tolerance, when {
+                    red.strict && green.strict -> "A_strict"
+                    red.strict -> "B_relaxed_green"
+                    else -> "C_relaxed_both"
+                } + if (red.blob.split || green.blob.split) "_split" else "")
+            }.minWithOrNull(compareBy<DotPair> { it.dx }.thenBy { if (it.green.strict) 0 else 1 })
+        }
+    }
+
+    private fun evaluateCapital(
+        classes: ByteArray, w: Int, h: Int, region: Region, signalX: Float,
+        requireYellow: Boolean, windowScale: Float, method: String, rule: String, majorityThreshold: Float,
+    ): CapitalEvaluation {
+        val signalColumn = signalX.toInt().coerceIn(0, w - 1)
+        val singleColumn = method == "pointwise" && rule == "signal"
+        val right = signalColumn.coerceIn(region.left, region.right)
+        val left = (right - (right - region.left) * windowScale).toInt().coerceIn(region.left, right)
+        val window = if (singleColumn) Region(signalColumn, region.top, signalColumn + 1, region.bottom)
+            else Region(left, region.top, right, region.bottom)
+        val count = window.width
+        val requiredGap = max(3f, h * 0.003f)
+        val maxStroke = max(6, (region.height * 0.08f).toInt())
+        val diagnostics = mutableListOf<CapitalColumnDiagnostic>()
+        val purpleMedians = mutableListOf<Float>()
+        val greenMedians = mutableListOf<Float>()
+        val yellowMedians = mutableListOf<Float>()
+        for (x in window.left until window.right) {
+            val purpleHits = colourRows(classes, w, x, region, 3)
+            val greenHits = colourRows(classes, w, x, region, 2)
+            val yellowHits = colourRows(classes, w, x, region, 4)
+            if (purpleHits.isNotEmpty()) purpleMedians += purpleHits[purpleHits.size / 2].toFloat()
+            if (greenHits.isNotEmpty()) greenMedians += greenHits[greenHits.size / 2].toFloat()
+            if (yellowHits.isNotEmpty()) yellowMedians += yellowHits[yellowHits.size / 2].toFloat()
+            // Pointwise evidence must be a single thin, unambiguous run. Multiple separated
+            // runs (text, a second curve, overlays) are missing evidence, not a guessed median.
+            val purple = singleRunCenter(purpleHits, maxStroke)
+            val green = singleRunCenter(greenHits, maxStroke)
+            val yellow = singleRunCenter(yellowHits, maxStroke)
+            val purpleViolates = purple != null && green != null && purple + requiredGap >= green
+            val yellowViolates = requireYellow && yellow != null && green != null && yellow + requiredGap >= green
+            val missing = purple == null || green == null || (requireYellow && yellow == null)
+            val columnStatus = when {
+                purpleViolates || yellowViolates -> CapitalColumnStatus.VIOLATING
+                missing -> CapitalColumnStatus.MISSING
+                else -> CapitalColumnStatus.SATISFIED
+            }
+            diagnostics += CapitalColumnDiagnostic(
+                x = x.toFloat() / w, status = columnStatus,
+                purpleY = purple?.let { (it + region.top) / h },
+                greenY = green?.let { (it + region.top) / h },
+                yellowY = yellow?.let { (it + region.top) / h },
+                hasMissingData = missing,
+            )
+        }
+        val purple = track(purpleMedians)
+        val green = track(greenMedians)
+        val yellow = track(yellowMedians)
+        val stats = capitalStats(diagnostics)
+        val status: DetectionStatus
+        val reason: String
+        if (signalColumn !in region.left until region.right || count <= 0) {
+            status = DetectionStatus.UNKNOWN
+            reason = "无法判断：信号位于资金绘图区边缘，左侧没有可用区间"
+        } else if (method == "median") {
+            val minimum = max(MIN_INTERVAL_COLUMNS, ceil(count * 0.5f).toInt())
+            val enough = purple.columns >= minimum && green.columns >= minimum && (!requireYellow || yellow.columns >= minimum)
+            if (!enough) {
+                status = DetectionStatus.UNKNOWN
+                reason = "无法判断：方案一每条所需资金线至少需覆盖窗口一半且不少于3列，当前数据不足"
+            } else {
+                val greenY = green.medianY!!
+                val above = purple.medianY!! + requiredGap < greenY &&
+                    (!requireYellow || yellow.medianY!! + requiredGap < greenY)
+                status = if (above) DetectionStatus.MATCH else DetectionStatus.NO_MATCH
+                reason = if (above) "符合：红绿点配对，资金区域中位数规则满足" else "不符合：资金区域中位数上下关系未满足"
+            }
+        } else {
+            val ruleColumns = diagnostics.map {
+                if (rule == "majority" && it.hasMissingData) CapitalColumnStatus.MISSING else it.status
+            }
+            status = CapitalRuleEvaluator.evaluate(ruleColumns, rule, majorityThreshold, MIN_INTERVAL_COLUMNS)
+            reason = when (status) {
+                DetectionStatus.MATCH -> when (rule) {
+                    "all" -> "符合：信号左侧区间每一列均可识别且满足资金规则"
+                    "majority" -> "符合：资金区间完整可读，满足列比例达到设定阈值"
+                    else -> "符合：信号当列资金关系满足"
+                }
+                DetectionStatus.NO_MATCH -> if (rule == "majority") "不符合：完整区间的满足列比例低于设定阈值" else "不符合：存在可见的资金线反例"
+                DetectionStatus.UNKNOWN -> if (stats.missingColumns > 0) "无法判断：所需资金区间存在缺失、遮挡或曲线归属不明的列" else "无法判断：信号左侧有效区间不足3列"
+            }
+        }
+        val gap = if (status == DetectionStatus.MATCH && purple.medianY != null && green.medianY != null) {
+            ((green.medianY - purple.medianY) / region.height).coerceAtLeast(0f)
+        } else 0f
+        val coverage = if (count == 0) 0f else min(purple.columns, green.columns).toFloat() / count
+        val score = (gap * 2.2f + coverage * 0.35f).coerceIn(0f, 1f)
+        return CapitalEvaluation(status, window, stats, diagnostics, purple, green, score, reason)
+    }
+
+    private fun colourRows(classes: ByteArray, w: Int, x: Int, region: Region, color: Int): List<Int> {
+        val rows = mutableListOf<Int>()
+        for (y in region.top until region.bottom) if (classes[y * w + x].toInt() == color) rows += y - region.top
+        return rows
+    }
+
+    private fun singleRunCenter(rows: List<Int>, maxStroke: Int): Float? {
+        if (rows.isEmpty() || rows.size > maxStroke) return null
+        for (i in 1 until rows.size) if (rows[i] != rows[i - 1] + 1) return null
+        return (rows.first() + rows.last()) / 2f
+    }
+
+    private fun track(values: List<Float>): Track = if (values.isEmpty()) Track(null, 0)
+        else Track(values.sorted()[values.size / 2], values.size)
+
+    private fun capitalStats(columns: List<CapitalColumnDiagnostic>): CapitalStats {
+        var run = 0
+        var longest = 0
+        for (column in columns) {
+            run = if (column.status == CapitalColumnStatus.SATISFIED) run + 1 else 0
+            longest = max(longest, run)
+        }
+        val missing = columns.count { it.hasMissingData }
+        return CapitalStats(
+            totalColumns = columns.size, validColumns = columns.size - missing,
+            satisfiedColumns = columns.count { it.status == CapitalColumnStatus.SATISFIED },
+            longestSatisfiedRun = longest, missingColumns = missing,
+            violatingColumns = columns.count { it.status == CapitalColumnStatus.VIOLATING },
+        )
+    }
+
+    private fun findComponents(source: ByteArray, width: Int, height: Int): List<Blob> {
+        val mask = source.copyOf()
+        val queue = IntArray(mask.size)
+        val result = mutableListOf<Blob>()
+        for (start in mask.indices) {
+            if (mask[start].toInt() == 0) continue
+            var head = 0
+            var tail = 0
+            queue[tail++] = start
+            mask[start] = 0
+            while (head < tail) {
+                val index = queue[head++]
+                val x = index % width
+                val y = index / width
+                for (dy in -1..1) {
+                    val ny = y + dy
+                    if (ny !in 0 until height) continue
+                    for (dx in -1..1) {
+                        if (dx == 0 && dy == 0) continue
+                        val nx = x + dx
+                        if (nx !in 0 until width) continue
+                        val next = ny * width + nx
+                        if (mask[next].toInt() != 0) {
+                            mask[next] = 0
+                            queue[tail++] = next
+                        }
+                    }
+                }
+            }
+            result += toBlob(queue.copyOf(tail), width)
+        }
+        return result
+    }
+
+    private fun toBlob(points: IntArray, stride: Int, split: Boolean = false): Blob {
+        var minX = Int.MAX_VALUE
+        var minY = Int.MAX_VALUE
+        var maxX = -1
+        var maxY = -1
+        var sumX = 0L
+        var sumY = 0L
+        for (p in points) {
+            val x = p % stride
+            val y = p / stride
+            minX = min(minX, x)
+            maxX = max(maxX, x)
+            minY = min(minY, y)
+            maxY = max(maxY, y)
+            sumX += x
+            sumY += y
+        }
+        return Blob(minX, minY, maxX - minX + 1, maxY - minY + 1, points.size,
+            sumX.toFloat() / points.size, sumY.toFloat() / points.size, points, split)
+    }
+
+    private fun scaleForAnalysis(source: Bitmap): Bitmap {
+        if (source.width <= MAX_ANALYSIS_WIDTH) return source
+        val height = (source.height * (MAX_ANALYSIS_WIDTH.toFloat() / source.width)).toInt()
+        return Bitmap.createScaledBitmap(source, MAX_ANALYSIS_WIDTH, height, true)
+    }
+
+    /** Returns 1=red, 2=green, 3=purple, 4=yellow/orange, 5=blue/cyan, 0=other. */
+    private fun classify(color: Int): Int {
+        val r = Color.red(color)
+        val g = Color.green(color)
+        val b = Color.blue(color)
+        val maximum = max(r, max(g, b))
+        val delta = maximum - min(r, min(g, b))
+        if (maximum < 70 || delta == 0) return 0
+        val saturation = delta.toFloat() / maximum
+        var hue = when (maximum) {
+            r -> 60f * (g - b).toFloat() / delta
+            g -> 60f * (2f + (b - r).toFloat() / delta)
+            else -> 60f * (4f + (r - g).toFloat() / delta)
+        }
+        if (hue < 0f) hue += 360f
+        return when {
+            (hue <= 16f || hue >= 344f) && saturation >= 0.45f && maximum >= 90 -> 1
+            hue in 80f..176f && saturation >= 0.40f -> 2
+            hue in 268f..340f && saturation >= 0.25f && maximum >= 90 -> 3
+            hue in 24f..66f && saturation >= 0.40f && maximum >= 110 -> 4
+            hue in 178f..260f && saturation >= 0.35f && maximum >= 80 -> 5
+            else -> 0
+        }
+    }
+
     fun drawAnnotation(source: Bitmap, result: IndicatorMatchResult): Bitmap {
         val output = source.copy(Bitmap.Config.ARGB_8888, true)
         val canvas = Canvas(output)
@@ -243,7 +597,11 @@ object IndicatorDetector {
         val textSize = max(28f, 34f * scale)
         paint.textSize = textSize
         paint.isFakeBoldText = true
-        val label = if (result.matched) "匹配  ${(result.confidence * 100).toInt()}%" else "不匹配"
+        val label = when (result.status) {
+            DetectionStatus.MATCH -> "匹配  ${(result.confidence * 100).toInt()}分"
+            DetectionStatus.NO_MATCH -> "不匹配"
+            DetectionStatus.UNKNOWN -> "无法判断"
+        }
         val padding = 14f * scale
         val textWidth = paint.measureText(label)
         val top = 18f * scale
@@ -253,119 +611,4 @@ object IndicatorDetector {
         return output
     }
 
-    private fun failed(reason: String) = IndicatorMatchResult(
-        false, false, false, 0f, null, null, null, null, reason
-    )
-
-    private fun scaleForAnalysis(source: Bitmap): Bitmap {
-        if (source.width <= MAX_ANALYSIS_WIDTH) return source
-        val targetHeight = (source.height * (MAX_ANALYSIS_WIDTH.toFloat() / source.width)).toInt()
-        return Bitmap.createScaledBitmap(source, MAX_ANALYSIS_WIDTH, targetHeight, true)
-    }
-
-    /** Returns 1=red, 2=green, 3=purple, 4=yellow, 0=other. */
-    private fun classify(color: Int): Int {
-        val r = Color.red(color)
-        val g = Color.green(color)
-        val b = Color.blue(color)
-        val maxValue = max(r, max(g, b))
-        val minValue = min(r, min(g, b))
-        val delta = maxValue - minValue
-        if (maxValue < 70 || delta == 0) return 0
-        val saturation = delta.toFloat() / maxValue
-        var hue = when (maxValue) {
-            r -> 60f * ((g - b).toFloat() / delta)
-            g -> 60f * (2f + (b - r).toFloat() / delta)
-            else -> 60f * (4f + (r - g).toFloat() / delta)
-        }
-        if (hue < 0f) hue += 360f
-        return when {
-            (hue <= 14f || hue >= 346f) && saturation >= 0.50f && maxValue >= 90 -> 1
-            hue in 84f..176f && saturation >= 0.45f && maxValue >= 70 -> 2
-            hue in 274f..338f && saturation >= 0.27f && maxValue >= 90 -> 3
-            hue in 28f..52f && saturation >= 0.45f && maxValue >= 120 -> 4
-            else -> 0
-        }
-    }
-
-    private fun findComponents(
-        source: ByteArray,
-        width: Int,
-        height: Int,
-        minArea: Int,
-        maxArea: Int
-    ): List<Blob> {
-        val mask = source.copyOf()
-        val queue = IntArray(mask.size)
-        val result = mutableListOf<Blob>()
-        for (start in mask.indices) {
-            if (mask[start].toInt() == 0) continue
-            var head = 0
-            var tail = 0
-            queue[tail++] = start
-            mask[start] = 0
-            var area = 0
-            var sumX = 0L
-            var sumY = 0L
-            var minX = width
-            var minY = height
-            var maxX = 0
-            var maxY = 0
-            while (head < tail) {
-                val index = queue[head++]
-                val x = index % width
-                val y = index / width
-                area++
-                sumX += x
-                sumY += y
-                minX = min(minX, x)
-                maxX = max(maxX, x)
-                minY = min(minY, y)
-                maxY = max(maxY, y)
-                for (dy in -1..1) {
-                    val ny = y + dy
-                    if (ny !in 0 until height) continue
-                    for (dx in -1..1) {
-                        if (dx == 0 && dy == 0) continue
-                        val nx = x + dx
-                        if (nx !in 0 until width) continue
-                        val next = ny * width + nx
-                        if (mask[next].toInt() != 0) {
-                            mask[next] = 0
-                            queue[tail++] = next
-                        }
-                    }
-                }
-            }
-            if (area in minArea..maxArea) {
-                result += Blob(
-                    minX, minY, maxX - minX + 1, maxY - minY + 1, area,
-                    sumX.toFloat() / area, sumY.toFloat() / area
-                )
-            }
-        }
-        return result
-    }
-
-    private fun collectTrack(
-        bitmap: Bitmap,
-        x0: Int,
-        x1: Int,
-        y0: Int,
-        y1: Int,
-        wantedClass: Int
-    ): Track {
-        val columnMedians = ArrayList<Int>(x1 - x0)
-        val ys = IntArray(y1 - y0)
-        for (x in x0 until x1) {
-            var count = 0
-            for (y in y0 until y1) {
-                if (classify(bitmap.getPixel(x, y)) == wantedClass) ys[count++] = y - y0
-            }
-            if (count > 0) columnMedians += ys[count / 2]
-        }
-        if (columnMedians.isEmpty()) return Track(null, 0)
-        columnMedians.sort()
-        return Track(columnMedians[columnMedians.size / 2].toFloat(), columnMedians.size)
-    }
 }

@@ -70,6 +70,16 @@ object QrShareUtils {
         SettingsStore.KEY_NODE_INDEX,
         SettingsStore.KEY_NODE_READ_DELAY_MS,
         SettingsStore.KEY_NODE_LONGPRESS_MS,
+        SettingsStore.KEY_POST_READ_DELAY_MS,
+        SettingsStore.KEY_CLOSE_CROSSHAIR_MODE,
+        SettingsStore.KEY_CAPITAL_REQUIRE_YELLOW,
+        SettingsStore.KEY_DOT_TOL_SCALE,
+        SettingsStore.KEY_MIN_CONFIDENCE,
+        SettingsStore.KEY_CAPITAL_WINDOW_SCALE,
+        SettingsStore.KEY_CAPITAL_METHOD,
+        SettingsStore.KEY_CAPITAL_RULE,
+        SettingsStore.KEY_SIGNAL_SELECTION,
+        SettingsStore.KEY_CAPITAL_MAJORITY_THRESHOLD,
     )
 
     /** Serialize current sharable settings into a scannable code string. */

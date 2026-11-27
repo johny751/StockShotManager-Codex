@@ -48,6 +48,11 @@
         </activity>
 
         <activity
+            android:name=".overlay.IndicatorReviewActivity"
+            android:exported="false"
+            android:theme="@style/Theme.StockShot" />
+
+        <activity
             android:name=".capture.MediaProjectionRequestActivity"
             android:exported="false"
             android:excludeFromRecents="true"

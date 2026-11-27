@@ -73,6 +73,14 @@ fun SettingsScreen(nav: NavHostController, vm: SettingsViewModel = viewModel()) 
     val state by vm.ui.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var showVersionHistory by remember { mutableStateOf(false) }
+    var majorityPercentText by remember(state.capitalMajorityThreshold) {
+        mutableStateOf((state.capitalMajorityThreshold * 100f).toString().removeSuffix(".0"))
+    }
+    val majorityPercent = majorityPercentText.toFloatOrNull()
+    val majorityPercentValid = majorityPercent != null && majorityPercent.isFinite() &&
+        majorityPercent > 50f && majorityPercent <= 100f
+    val usingMajorityRule = state.capitalMethod == SettingsStore.CAPITAL_METHOD_POINTWISE &&
+        state.capitalRule == SettingsStore.CAPITAL_RULE_MAJORITY
 
     val folderPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
@@ -347,6 +355,96 @@ fun SettingsScreen(nav: NavHostController, vm: SettingsViewModel = viewModel()) 
                     onCheckedChange = { v -> vm.update { it.copy(capitalRequireYellow = v) } }
                 )
             }
+            Text("资金线判断方式", fontWeight = FontWeight.Medium)
+            FilterChip(
+                selected = state.capitalMethod == SettingsStore.CAPITAL_METHOD_MEDIAN,
+                onClick = { vm.update { it.copy(capitalMethod = SettingsStore.CAPITAL_METHOD_MEDIAN) } },
+                label = { Text("方案一：中位位置（原方法）") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            FilterChip(
+                selected = state.capitalMethod == SettingsStore.CAPITAL_METHOD_POINTWISE,
+                onClick = { vm.update { it.copy(capitalMethod = SettingsStore.CAPITAL_METHOD_POINTWISE) } },
+                label = { Text("方案二：逐列比较") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                text = if (state.capitalMethod == SettingsStore.CAPITAL_METHOD_MEDIAN) {
+                    "比较窗口内各条线的中位位置，不代表每个时刻都满足上下关系。"
+                } else {
+                    "在相同时间列比较资金线，按下方规则判断。"
+                },
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (state.capitalMethod == SettingsStore.CAPITAL_METHOD_POINTWISE) {
+                listOf(
+                    SettingsStore.CAPITAL_RULE_ALL to "整段每列满足",
+                    SettingsStore.CAPITAL_RULE_MAJORITY to "大部分时刻满足",
+                    SettingsStore.CAPITAL_RULE_SIGNAL to "信号出现时满足",
+                ).forEach { (rule, label) ->
+                    FilterChip(
+                        selected = state.capitalRule == rule,
+                        onClick = { vm.update { it.copy(capitalRule = rule) } },
+                        label = { Text(label) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                Text(
+                    text = when (state.capitalRule) {
+                        SettingsStore.CAPITAL_RULE_MAJORITY ->
+                            "窗口必须完整可读，再按整段总列数计算满足比例；任何必需线缺失则无法判断。"
+                        SettingsStore.CAPITAL_RULE_SIGNAL ->
+                            "只检查红绿信号点对应的时间列；缺失、无法判断时不算满足。"
+                        else -> "窗口内每一列都须满足；缺失、无法判断的列不能跳过。"
+                    },
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (usingMajorityRule) {
+                    OutlinedTextField(
+                        value = majorityPercentText,
+                        onValueChange = { text ->
+                            majorityPercentText = text
+                            val percent = text.toFloatOrNull()
+                            if (percent != null && percent.isFinite() && percent > 50f && percent <= 100f) {
+                                vm.update { it.copy(capitalMajorityThreshold = percent / 100f) }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        isError = !majorityPercentValid,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        label = { Text("满足比例（%，大于 50 且不超过 100）") },
+                        supportingText = {
+                            Text(if (majorityPercentValid) "默认 90%。" else "请输入大于 50 且不超过 100 的百分比。")
+                        },
+                    )
+                }
+            }
+            Text("信号选择", fontWeight = FontWeight.Medium)
+            FilterChip(
+                selected = state.signalSelection == SettingsStore.SIGNAL_SELECTION_LATEST,
+                onClick = { vm.update { it.copy(signalSelection = SettingsStore.SIGNAL_SELECTION_LATEST) } },
+                label = { Text("最新信号（最右一对）") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            FilterChip(
+                selected = state.signalSelection == SettingsStore.SIGNAL_SELECTION_ANY,
+                onClick = { vm.update { it.copy(signalSelection = SettingsStore.SIGNAL_SELECTION_ANY) } },
+                label = { Text("任意历史信号（从左到右）") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                text = if (state.signalSelection == SettingsStore.SIGNAL_SELECTION_ANY) {
+                    "从左到右逐对检查历史红绿信号，首个同时符合资金条件和规则分数门槛即停止。"
+                } else {
+                    "只检查最右侧一对红绿信号；该对不符合时，不回退到更早信号。"
+                },
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text("修改后请点击底部“保存”，重新启动采集后应用新设置。", fontSize = 12.sp)
             Text(
                 text = "\u9608\u503c\u5fae\u8c03\uff08\u73b0\u573a\u8bc6\u522b\u4e0d\u51c6\u65f6\u518d\u6539\uff0c\u4e00\u822c\u4fdd\u6301\u9ed8\u8ba4\uff09\uff1a\u70b9\u5bf9\u9f50\u5bb9\u5dee 1.0\uff08\u8c03\u5927\u66f4\u5bbd\u677e\uff0c0.3-3.0\uff09\uff1b\u6700\u5c0f\u7f6e\u4fe1\u5ea6 0 \u8868\u793a\u4e0d\u9650\uff080-1\uff0c\u8c03\u9ad8\u53ef\u8fc7\u6ee4\u4f4e\u628a\u63e1\u547d\u4e2d\uff09\u3002",
                 fontSize = 12.sp,
@@ -730,6 +828,7 @@ fun SettingsScreen(nav: NavHostController, vm: SettingsViewModel = viewModel()) 
             Spacer(Modifier.height(8.dp))
             Button(
                 onClick = { vm.save() },
+                enabled = !usingMajorityRule || majorityPercentValid,
                 modifier = Modifier.fillMaxWidth()
             ) { Text("\u4fdd\u5b58") }
         }
@@ -793,6 +892,14 @@ private fun VersionHistoryDialog(onDismiss: () -> Unit) {
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
+                VersionHistoryEntry(
+                    version = "1.11",
+                    changes = listOf(
+                        "资金识别可选中位位置或逐列比较，支持整段严格、大部分时刻和信号当列规则。",
+                        "默认从左到右检查信号，首个满足即停止；改进粘连点识别并新增无法判断状态。",
+                        "指标测试支持缩放截图、完整诊断标注、人工样本保存、分组验收与 ZIP 导出。",
+                    ),
+                )
                 VersionHistoryEntry(
                     version = "1.10",
                     changes = listOf(

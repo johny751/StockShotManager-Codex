@@ -18,7 +18,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import com.stockshot.indicator.IndicatorDetector
+import com.stockshot.manager.indicator.IndicatorDetectionOptions
 import com.stockshot.manager.StockShotApp
 import com.stockshot.manager.capture.MediaProjectionRequestActivity
 import com.stockshot.manager.data.SettingsStore
@@ -47,8 +47,9 @@ object FeatureTestOverlay {
     private var menuView: View? = null
     private var configView: View? = null
     private var showing = false
+    private var indicatorTesting = false
 
-    private val scope = CoroutineScope(Dispatchers.Main)
+    private val scope = CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Main)
 
     fun isShowing(): Boolean = showing
 
@@ -167,6 +168,10 @@ object FeatureTestOverlay {
         container.addView(titleRow(context, "功能测试"))
         container.addView(controlFinderRow(context))
         container.addView(menuItem(context, "指标识别") { runIndicatorTest(context) })
+        container.addView(menuItem(context, "指标样本库 / 验收") {
+            removeView(menuView); menuView = null
+            IndicatorReviewActivity.openLibrary(context)
+        })
         container.addView(menuItem(context, "截图测试") { runCaptureTest(context) })
         container.addView(menuItem(context, "读取股票代码") { runReadCodeTest(context) })
         container.addView(menuItem(context, "点击下一只") { runClickNextTest(context) })
@@ -393,58 +398,33 @@ object FeatureTestOverlay {
     }
 
     private fun runIndicatorTest(context: Context) {
+        if (indicatorTesting) return
+        indicatorTesting = true
         removeView(menuView); menuView = null
-        captureFrame(context) { bmp ->
-            if (bmp == null) {
-                Toast.makeText(context, "截图失败，无法识别", Toast.LENGTH_SHORT).show()
-                return@captureFrame
-            }
-            scope.launch {
-                val settings = StockShotApp.instance.settingsStore
-                val requireYellow = settings.getBool(
-                    SettingsStore.KEY_CAPITAL_REQUIRE_YELLOW,
-                    SettingsStore.DEFAULT_CAPITAL_REQUIRE_YELLOW
-                )
-                val dotTolScale = settings.getFloat(
-                    SettingsStore.KEY_DOT_TOL_SCALE,
-                    SettingsStore.DEFAULT_DOT_TOL_SCALE
-                )
-                val minConfidence = settings.getFloat(
-                    SettingsStore.KEY_MIN_CONFIDENCE,
-                    SettingsStore.DEFAULT_MIN_CONFIDENCE
-                )
-                val capWin = settings.getFloat(
-                    SettingsStore.KEY_CAPITAL_WINDOW_SCALE,
-                    SettingsStore.DEFAULT_CAPITAL_WINDOW_SCALE
-                )
-                val result = withContext(Dispatchers.Default) {
-                    IndicatorDetector.detectIndicatorPattern(bmp, requireYellow, dotTolScale, minConfidence, capWin)
+        HighlightOverlay.clear()
+        iconView?.visibility = View.GONE
+        scope.launch {
+            kotlinx.coroutines.delay(250L)
+            captureFrame(context) { bmp ->
+                iconView?.visibility = View.VISIBLE
+                if (bmp == null) {
+                    indicatorTesting = false
+                    Toast.makeText(context, "截图失败，无法识别", Toast.LENGTH_SHORT).show()
+                } else scope.launch {
+                    try {
+                        val options = IndicatorDetectionOptions.fromSettings(StockShotApp.instance.settingsStore)
+                        val result = withContext(Dispatchers.Default) { options.detect(bmp) }
+                        IndicatorReviewActivity.open(context, bmp, options, result)
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        AppLogger.e(TAG, "指标测试失败", e)
+                        Toast.makeText(context, "指标测试失败", Toast.LENGTH_LONG).show()
+                    } finally {
+                        if (!bmp.isRecycled) bmp.recycle()
+                        indicatorTesting = false
+                    }
                 }
-                val sw = context.resources.displayMetrics.widthPixels
-                val sh = context.resources.displayMetrics.heightPixels
-                val rects = ArrayList<Rect>()
-                val box = dp(context, 14)
-                result.redPoint?.let {
-                    val cx = (it.x * sw).toInt(); val cy = (it.y * sh).toInt()
-                    rects.add(Rect(cx - box, cy - box, cx + box, cy + box))
-                }
-                result.greenPoint?.let {
-                    val cx = (it.x * sw).toInt(); val cy = (it.y * sh).toInt()
-                    rects.add(Rect(cx - box, cy - box, cx + box, cy + box))
-                }
-                val tip = "指标识别: ${if (result.matched) "命中" else "未命中"}\n" +
-                    "红绿点=${result.trendDotsMatched} 资金线=${result.capitalLinesMatched} 置信=${result.confidence}\n${result.reason}"
-                HighlightOverlay.show(context, rects, tip)
-                val rp = result.redPoint; val gp = result.greenPoint
-                if (result.matched && rp != null && gp != null) {
-                    val svc = ScreenshotAccessibilityService.getInstance()
-                    val x = ((rp.x + gp.x) / 2f) * sw
-                    val y = ((rp.y + gp.y) / 2f) * sh
-                    val ms = StockShotApp.instance.settingsStore
-                        .getInt(SettingsStore.KEY_NODE_LONGPRESS_MS, SettingsStore.DEFAULT_NODE_LONGPRESS_MS).toLong()
-                    svc?.longPress(x, y, ms)
-                }
-                if (!bmp.isRecycled) bmp.recycle()
             }
         }
     }
@@ -494,10 +474,19 @@ object FeatureTestOverlay {
     }
 
     /** 抓一帧：截图服务已在运行则直接抓；否则请求投屏授权后再抓。 */
+    private suspend fun captureSafely(service: ScreenCaptureService?): android.graphics.Bitmap? = try {
+        service?.capture()
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        AppLogger.e(TAG, "测试截图失败", e)
+        null
+    }
+
     private fun captureFrame(context: Context, onResult: (android.graphics.Bitmap?) -> Unit) {
         val svc = ScreenCaptureService.getInstance()
         if (ScreenCaptureService.isRunning() && svc != null) {
-            scope.launch { onResult(svc.capture()) }
+            scope.launch { onResult(captureSafely(svc)) }
             return
         }
         Toast.makeText(context, "请求屏幕录制授权…", Toast.LENGTH_SHORT).show()
@@ -510,10 +499,14 @@ object FeatureTestOverlay {
                         kotlinx.coroutines.delay(200L); waited += 200L
                     }
                     kotlinx.coroutines.delay(600L)
-                    onResult(ScreenCaptureService.getInstance()?.capture())
+                    onResult(captureSafely(ScreenCaptureService.getInstance()))
                 }
             },
-            onDenied = { Toast.makeText(context, "已取消授权", Toast.LENGTH_SHORT).show() }
+            onDenied = {
+                indicatorTesting = false
+                iconView?.visibility = View.VISIBLE
+                Toast.makeText(context, "已取消授权", Toast.LENGTH_SHORT).show()
+            }
         )
     }
 }

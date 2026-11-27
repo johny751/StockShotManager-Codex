@@ -41,6 +41,10 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         // 读价后延迟 + 关闭十字光标方式
         val postReadDelayMs: Int = SettingsStore.DEFAULT_POST_READ_DELAY_MS,
         val capitalRequireYellow: Boolean = SettingsStore.DEFAULT_CAPITAL_REQUIRE_YELLOW,
+        val capitalMethod: String = SettingsStore.DEFAULT_CAPITAL_METHOD,
+        val capitalRule: String = SettingsStore.DEFAULT_CAPITAL_RULE,
+        val signalSelection: String = SettingsStore.DEFAULT_SIGNAL_SELECTION,
+        val capitalMajorityThreshold: Float = SettingsStore.DEFAULT_CAPITAL_MAJORITY_THRESHOLD,
         val dotToleranceScale: Float = SettingsStore.DEFAULT_DOT_TOL_SCALE,
         val minConfidence: Float = SettingsStore.DEFAULT_MIN_CONFIDENCE,
         val capitalWindowScale: Float = SettingsStore.DEFAULT_CAPITAL_WINDOW_SCALE,
@@ -109,6 +113,10 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         postReadDelayMs = store.getInt(SettingsStore.KEY_POST_READ_DELAY_MS, SettingsStore.DEFAULT_POST_READ_DELAY_MS),
         closeCrosshairMode = store.get(SettingsStore.KEY_CLOSE_CROSSHAIR_MODE, SettingsStore.DEFAULT_CLOSE_CROSSHAIR_MODE),
         capitalRequireYellow = store.getBool(SettingsStore.KEY_CAPITAL_REQUIRE_YELLOW, SettingsStore.DEFAULT_CAPITAL_REQUIRE_YELLOW),
+        capitalMethod = store.getCapitalMethod(),
+        capitalRule = store.getCapitalRule(),
+        signalSelection = store.getSignalSelection(),
+        capitalMajorityThreshold = store.getCapitalMajorityThreshold(),
         dotToleranceScale = store.getFloat(SettingsStore.KEY_DOT_TOL_SCALE, SettingsStore.DEFAULT_DOT_TOL_SCALE),
         minConfidence = store.getFloat(SettingsStore.KEY_MIN_CONFIDENCE, SettingsStore.DEFAULT_MIN_CONFIDENCE),
         capitalWindowScale = store.getFloat(SettingsStore.KEY_CAPITAL_WINDOW_SCALE, SettingsStore.DEFAULT_CAPITAL_WINDOW_SCALE),
@@ -134,7 +142,15 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun save() {
-        val s = _ui.value
+        val s = _ui.value.let { state ->
+            state.copy(
+                capitalMethod = SettingsStore.normalizeCapitalMethod(state.capitalMethod),
+                capitalRule = SettingsStore.normalizeCapitalRule(state.capitalRule),
+                signalSelection = SettingsStore.normalizeSignalSelection(state.signalSelection),
+                capitalMajorityThreshold = SettingsStore.normalizeCapitalMajorityThreshold(state.capitalMajorityThreshold),
+            )
+        }
+        _ui.value = s
         viewModelScope.launch {
             store.put(SettingsStore.KEY_QUOTE_SOURCE_TYPE, s.quoteSourceType)
             store.put(SettingsStore.KEY_LAN_API_IP, s.lanApiIp.trim())
@@ -148,6 +164,10 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             store.put(SettingsStore.KEY_POST_READ_DELAY_MS, s.postReadDelayMs.toString())
             store.put(SettingsStore.KEY_CLOSE_CROSSHAIR_MODE, s.closeCrosshairMode)
             store.put(SettingsStore.KEY_CAPITAL_REQUIRE_YELLOW, s.capitalRequireYellow.toString())
+            store.put(SettingsStore.KEY_CAPITAL_METHOD, s.capitalMethod)
+            store.put(SettingsStore.KEY_CAPITAL_RULE, s.capitalRule)
+            store.put(SettingsStore.KEY_SIGNAL_SELECTION, s.signalSelection)
+            store.put(SettingsStore.KEY_CAPITAL_MAJORITY_THRESHOLD, s.capitalMajorityThreshold.toString())
             store.put(SettingsStore.KEY_DOT_TOL_SCALE, s.dotToleranceScale.toString())
             store.put(SettingsStore.KEY_MIN_CONFIDENCE, s.minConfidence.toString())
             store.put(SettingsStore.KEY_CAPITAL_WINDOW_SCALE, s.capitalWindowScale.toString())

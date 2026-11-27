@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "captureDate": "2026-11-27",
+  "purpose": "Same-device diagnosis fixtures. The reordered image has a user-confirmed strict pointwise/all NO_MATCH label; the other image only has a layout-invalid label.",
+  "heldOut": false,
+  "originalDimensions": {
+    "width": 1440,
+    "height": 3200
+  },
+  "crop": {
+    "left": 0,
+    "top": 1776,
+    "width": 986,
+    "height": 728
+  },
+  "reconstruction": "Paste the lossless crop at (0,1776) on an opaque white 1440x3200 canvas. No resize or color conversion. All detector ROIs lie inside this crop.",
+  "fixtures": [
+    {
+      "id": "panels-capital-above-trend",
+      "file": "panels-capital-above-trend.png",
+      "sourcePathAtCapture": "build/indicator-diagnosis-20261127/phone-current.png",
+      "sourceSha256": "5d1d441444ea1a237a7b13e74c6a385e2b91647d7b12b1fea6009c900fd495f7",
+      "cropSha256": "0f9d487b8ea01f47d603c9aa7eff5aba1359755a9be988425ad3ae6d05e42df3",
+      "observedPanelOrder": [
+        "capital",
+        "trend"
+      ],
+      "labelBasis": "Panel order is directly legible in the screenshot headings; no business-condition label asserted.",
+      "signalLabel": {
+        "status": "not_applicable",
+        "reason": "Configured detector panel order is reversed; this is a layout UNKNOWN fixture, not a stock-condition label."
+      }
+    },
+    {
+      "id": "panels-trend-above-capital",
+      "file": "panels-trend-above-capital.png",
+      "sourcePathAtCapture": "build/indicator-diagnosis-20261127/after-panel-reorder/phone-current.png",
+      "sourceSha256": "fd3c61420b9bcf2fdf595a3de3b87f597ed82a206d34fda2fba6aa023b38cd8f",
+      "cropSha256": "bb46bada12c4d52c007c89448ca4344401be075cc5b41f0961d0c0a1500ceeed",
+      "observedPanelOrder": [
+        "trend",
+        "capital"
+      ],
+      "labelBasis": "Panel order is directly legible in screenshot headings. The strict condition label below was confirmed by the user, not inferred from program output.",
+      "signalLabel": {
+        "status": "human_confirmed",
+        "source": "User confirmation relayed by the main task for this 2026-11-27 capture",
+        "method": "pointwise",
+        "rule": "all",
+        "selection": "any",
+        "expected": "NO_MATCH",
+        "scope": "Strict left-of-signal window; no label inferred for median, majority or signal-only methods."
+      }
+    }
+  ]
+}

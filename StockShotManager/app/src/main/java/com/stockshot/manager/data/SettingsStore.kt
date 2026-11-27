@@ -1,16 +1,18 @@
 package com.stockshot.manager.data
 
 import android.content.Context
+import com.stockshot.manager.data.dao.AppSettingDao
 import com.stockshot.manager.data.entity.AppSetting
 
 /**
  * 閰嶇疆椤瑰瓨鍙栥€傚熀浜?Room 鐨?app_settings 琛紝鍚屾椂鎻愪緵鍚屾缂撳瓨渚?Service 蹇€熻鍙栥€?
  * 閿€煎鍚箟瑙侀渶姹傛枃妗?AppSetting 琛ㄣ€?
  */
-class SettingsStore(context: Context) {
+class SettingsStore internal constructor(context: Context, private val dao: AppSettingDao) {
+
+    constructor(context: Context) : this(context, AppDatabase.getDatabase(context.applicationContext).appSettingDao())
 
     private val appContext = context.applicationContext
-    private val dao = AppDatabase.getDatabase(appContext).appSettingDao()
 
     // 缂撳瓨涓€浠介暅鍍忓埌 SharedPreferences锛屼緵鏃犳硶璧板崗绋嬬殑鍦烘櫙锛圫ervice锛夊悓姝ヨ鍙?
     private val prefs = appContext.getSharedPreferences("settings_cache", Context.MODE_PRIVATE)
@@ -21,8 +23,15 @@ class SettingsStore(context: Context) {
     }
 
     suspend fun put(key: String, value: String) {
-        dao.upsert(AppSetting(key, value))
-        prefs.edit().putString(key, value).apply()
+        val normalized = when (key) {
+            KEY_CAPITAL_METHOD -> normalizeCapitalMethod(value)
+            KEY_CAPITAL_RULE -> normalizeCapitalRule(value)
+            KEY_SIGNAL_SELECTION -> normalizeSignalSelection(value)
+            KEY_CAPITAL_MAJORITY_THRESHOLD -> normalizeCapitalMajorityThreshold(value.toFloatOrNull()).toString()
+            else -> value
+        }
+        dao.upsert(AppSetting(key, normalized))
+        prefs.edit().putString(key, normalized).apply()
     }
 
     /** 鍚屾璇诲彇锛堜粎渚?Service 蹇収锛屼笌 Room 缂撳瓨鍙屽啓淇濇寔涓€鑷达級 */
@@ -35,7 +44,20 @@ class SettingsStore(context: Context) {
         get(key, default.toString()).toBooleanStrictOrNull() ?: default
 
     suspend fun getFloat(key: String, default: Float): Float =
-        get(key, default.toString()).toFloatOrNull() ?: default
+        get(key, default.toString()).toFloatOrNull()?.takeIf { it.isFinite() } ?: default
+
+    suspend fun getCapitalMethod(): String =
+        normalizeCapitalMethod(get(KEY_CAPITAL_METHOD, DEFAULT_CAPITAL_METHOD))
+
+    suspend fun getCapitalRule(): String =
+        normalizeCapitalRule(get(KEY_CAPITAL_RULE, DEFAULT_CAPITAL_RULE))
+
+    suspend fun getSignalSelection(): String =
+        normalizeSignalSelection(get(KEY_SIGNAL_SELECTION, DEFAULT_SIGNAL_SELECTION))
+
+    suspend fun getCapitalMajorityThreshold(): Float = normalizeCapitalMajorityThreshold(
+        get(KEY_CAPITAL_MAJORITY_THRESHOLD, DEFAULT_CAPITAL_MAJORITY_THRESHOLD.toString()).toFloatOrNull(),
+    )
 
     companion object {
         const val KEY_DATA_SOURCE_TYPE = "data_source_type"     // api / manual
@@ -115,6 +137,43 @@ class SettingsStore(context: Context) {
         const val KEY_CAPITAL_REQUIRE_YELLOW = "capital_require_yellow"
         const val DEFAULT_CAPITAL_REQUIRE_YELLOW = false
 
+        const val KEY_CAPITAL_METHOD = "capital_method"
+        const val CAPITAL_METHOD_MEDIAN = "median"
+        const val CAPITAL_METHOD_POINTWISE = "pointwise"
+        const val DEFAULT_CAPITAL_METHOD = CAPITAL_METHOD_MEDIAN
+
+        const val KEY_CAPITAL_RULE = "capital_rule"
+        const val CAPITAL_RULE_ALL = "all"
+        const val CAPITAL_RULE_MAJORITY = "majority"
+        const val CAPITAL_RULE_SIGNAL = "signal"
+        const val DEFAULT_CAPITAL_RULE = CAPITAL_RULE_ALL
+
+        const val KEY_SIGNAL_SELECTION = "signal_selection"
+        const val SIGNAL_SELECTION_LATEST = "latest"
+        const val SIGNAL_SELECTION_ANY = "any"
+        const val DEFAULT_SIGNAL_SELECTION = SIGNAL_SELECTION_ANY
+
+        const val KEY_CAPITAL_MAJORITY_THRESHOLD = "capital_majority_threshold"
+        const val DEFAULT_CAPITAL_MAJORITY_THRESHOLD = 0.9f
+
+        fun normalizeCapitalMethod(value: String): String = when (value) {
+            CAPITAL_METHOD_MEDIAN, CAPITAL_METHOD_POINTWISE -> value
+            else -> DEFAULT_CAPITAL_METHOD
+        }
+
+        fun normalizeCapitalRule(value: String): String = when (value) {
+            CAPITAL_RULE_ALL, CAPITAL_RULE_MAJORITY, CAPITAL_RULE_SIGNAL -> value
+            else -> DEFAULT_CAPITAL_RULE
+        }
+
+        fun normalizeSignalSelection(value: String): String = when (value) {
+            SIGNAL_SELECTION_LATEST, SIGNAL_SELECTION_ANY -> value
+            else -> DEFAULT_SIGNAL_SELECTION
+        }
+
+        fun normalizeCapitalMajorityThreshold(value: Float?): Float =
+            value?.takeIf { it.isFinite() && it > 0.5f && it <= 1f } ?: DEFAULT_CAPITAL_MAJORITY_THRESHOLD
+
         // Recognition tuning thresholds (scheme B primary, C fallback).
         // dotToleranceScale multiplies the horizontal red/green dot pairing window (B/C).
         // minConfidence gates a match: below it the frame is treated as not matched (0 = off).
@@ -123,7 +182,7 @@ class SettingsStore(context: Context) {
         const val DEFAULT_DOT_TOL_SCALE = 1f
         const val DEFAULT_MIN_CONFIDENCE = 0f
 
-        // 资金线关系只分析红绿点左侧一段时间的窗口（占 plot 宽的比例，忽略红绿点右侧数据）
+        // 资金线关系分析信号点左侧窗口，比例以图表起点到信号点的可用宽度计算。
         const val KEY_CAPITAL_WINDOW_SCALE = "capital_window_scale"
         const val DEFAULT_CAPITAL_WINDOW_SCALE = 0.4f
     }
