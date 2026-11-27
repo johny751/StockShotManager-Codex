@@ -37,7 +37,7 @@ import org.robolectric.annotation.LooperMode
 @Config(sdk = [28], application = StockShotApp::class)
 @LooperMode(LooperMode.Mode.PAUSED)
 class IndicatorReviewActivityTest {
-    private val application: StockShotApp get() = RuntimeEnvironment.getApplication()
+    private val application: StockShotApp get() = RuntimeEnvironment.getApplication() as StockShotApp
     private val controllers = mutableListOf<ActivityController<IndicatorReviewActivity>>()
     private val sessionFolders = mutableListOf<File>()
 
