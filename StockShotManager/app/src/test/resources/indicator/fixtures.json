@@ -1,7 +1,6 @@
 {
   "schemaVersion": 1,
-  "captureDate": "2026-11-27",
-  "purpose": "Same-device diagnosis fixtures. The reordered image has a user-confirmed strict pointwise/all NO_MATCH label; the other image only has a layout-invalid label.",
+  "purpose": "Same-device development regression fixtures. Labels distinguish observed panel/signal geometry from explicitly user-confirmed fund rules. These captures are not an independent held-out evaluation set.",
   "heldOut": false,
   "originalDimensions": {
     "width": 1440,
@@ -29,7 +28,8 @@
       "signalLabel": {
         "status": "not_applicable",
         "reason": "Configured detector panel order is reversed; this is a layout UNKNOWN fixture, not a stock-condition label."
-      }
+      },
+      "captureDate": "2026-11-27"
     },
     {
       "id": "panels-trend-above-capital",
@@ -50,7 +50,54 @@
         "selection": "any",
         "expected": "NO_MATCH",
         "scope": "Strict left-of-signal window; no label inferred for median, majority or signal-only methods."
+      },
+      "captureDate": "2026-11-27"
+    },
+    {
+      "id": "babi-605338-solid-green",
+      "file": "babi-605338-solid-green.png",
+      "captureDate": "2026-11-28",
+      "sourcePathAtCapture": "build/indicator-diagnosis-20261128/babi-605338/phone-original.png",
+      "sourceSha256": "84917af20e7bef540e3d596aa6cb6ea42d4f311b7455addfb50b0a03ed9ba190",
+      "cropSha256": "cfad728882258a97614d732f3e1c5e42a500c99af44a3aeba825990dd910e688",
+      "observedPanelOrder": [
+        "trend",
+        "capital"
+      ],
+      "heldOut": false,
+      "labelBasis": "Direct visual inspection shows two separate red markers with one shared solid green strip below. This fixture was used to develop the corresponding pairing repair.",
+      "trendLabel": {
+        "status": "visual_observation",
+        "expected": "MATCH",
+        "minimumVisiblePairs": 2
+      },
+      "capitalLabel": {
+        "status": "unconfirmed",
+        "expected": null
+      },
+      "overallLabel": {
+        "status": "unconfirmed",
+        "expected": null
+      },
+      "regressionAssertions": [
+        "At least two red-anchor pairs are detected",
+        "Trend status is MATCH",
+        "Capital evaluation runs and records a nonempty window",
+        "No capital or overall result is asserted as human truth"
+      ],
+      "regressionParameters": {
+        "capitalMethod": "pointwise",
+        "capitalRule": "all",
+        "capitalWindowScale": 0.2,
+        "signalSelections": [
+          "any",
+          "latest"
+        ]
       }
     }
+  ],
+  "captureDates": [
+    "2026-11-27",
+    "2026-11-28"
   ]
 }

@@ -30,8 +30,8 @@ android {
         applicationId "com.stockshot.manager"
         minSdk 26
         targetSdk 34
-        versionCode 12
-        versionName "1.11"
+        versionCode 13
+        versionName "1.12"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         // Stable for the same commit so no-op builds remain incremental.
         buildConfigField "String", "BUILD_TIME", "\"${buildTime}\""

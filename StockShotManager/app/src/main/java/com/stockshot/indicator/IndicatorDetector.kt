@@ -136,14 +136,17 @@ object IndicatorDetector {
             val trendStructure = hasTrendStructure(trendBaselines, trend.height)
             val capitalHasTrendStructure = hasTrendStructure(capitalBaselines, capital.height)
             val dots = collectDots(classes, w, h, trend, trendBaselines)
-            val pairs = pairDots(dots, chartRight, trend.height, dotToleranceScale.coerceIn(0.1f, 5f))
+            val pairs = pairDots(dots, w, h, trend, dotToleranceScale.coerceIn(0.1f, 5f))
+            // Keep the actual local green evidence visible alongside its original connected blob.
+            val diagnosticDots = dots + pairs.map { it.green }.filter { it !in dots }.distinct()
             val messages = mutableListOf<String>()
             if (!trendStructure) messages += "趋势区域缺少可核对的低位绿基线和另一条分离的蓝/红基线，可能是布局变化、遮挡或截图不完整。"
             if (capitalHasTrendStructure) messages += "资金区域出现趋势面板式多条水平基线，可能是两个面板顺序错位。"
             messages += "固定版式要求趋势在上、资金在下；结构校验只能拒绝明显异常，不能保证识别所有版式。"
             if (method == "median") messages += "方案一比较两种颜色各自的区域中位数；逐列满足/反例/缺失统计仅供诊断，不决定方案一结果。"
             diagnostics = diagnostics.copy(
-                dotCandidates = dots.map { it.toDiagnostic(trend, w, h) },
+                dotCandidates = diagnosticDots.sortedWith(compareBy<Dot> { it.blob.centerX }.thenBy { it.color.ordinal })
+                    .map { it.toDiagnostic(trend, w, h) },
                 trendPanelValid = trendStructure,
                 capitalPanelValid = !capitalHasTrendStructure,
                 candidatePairCount = pairs.size,
@@ -217,7 +220,9 @@ object IndicatorDetector {
                 diagnostics = diagnostics.copy(
                     capitalWindow = cap.window.normalized(w, h), capitalStats = cap.stats,
                     columns = cap.columns, checkedPairCount = checked,
-                    messages = messages + cap.reason + "置信度为手工规则分数，不是正确率或成功概率。",
+                    messages = messages + cap.reason +
+                        (if (chosen.pair.path.endsWith("_local_pixels")) listOf("绿块粘连，按红点下方局部像素配对；绿点位置来自实际绿色像素，未按固定间距补点。") else emptyList()) +
+                        "置信度为手工规则分数，不是正确率或成功概率。",
                 ),
             )
         } finally {
@@ -347,26 +352,70 @@ object IndicatorDetector {
         return pieces
     }
 
-    private fun pairDots(dots: List<Dot>, chartRight: Int, trendHeight: Int, toleranceScale: Float): List<DotPair> {
+    private fun pairDots(
+        dots: List<Dot>, analysisWidth: Int, analysisHeight: Int, trend: Region, toleranceScale: Float,
+    ): List<DotPair> {
         val reds = dots.filter { it.color == IndicatorDotColor.RED }
         val greens = dots.filter { it.color == IndicatorDotColor.GREEN }
-        val strictTolerance = max(4f, chartRight * 0.012f) * toleranceScale
-        val relaxedTolerance = max(6f, chartRight * 0.020f) * toleranceScale
-        val verticalBand = max(8f, trendHeight * 0.22f)
+        val strictTolerance = max(4f, trend.right * 0.012f) * toleranceScale
+        val relaxedTolerance = max(6f, trend.right * 0.020f) * toleranceScale
+        val verticalBand = max(8f, trend.height * 0.22f)
         return reds.mapNotNull { red ->
             // Each red anchor defines one chronological signal. Pick its best nearby green
             // candidate so the same red marker cannot create several contradictory signals.
-            greens.mapNotNull { green ->
-                val dx = abs(red.blob.centerX - green.blob.centerX)
+            greens.mapNotNull greenCandidate@ { originalGreen ->
                 val tolerance = if (red.strict) strictTolerance else relaxedTolerance
+                val green = if (abs(red.blob.centerX - originalGreen.blob.centerX) > tolerance) {
+                    localGreenForAnchor(red, originalGreen, trend.width, analysisWidth, analysisHeight)
+                        ?: return@greenCandidate null
+                } else originalGreen
+                val dx = abs(red.blob.centerX - green.blob.centerX)
                 if (dx > tolerance || abs(red.blob.centerY - green.blob.centerY) > verticalBand) null
                 else DotPair(red, green, dx, tolerance, when {
                     red.strict && green.strict -> "A_strict"
                     red.strict -> "B_relaxed_green"
                     else -> "C_relaxed_both"
-                } + if (red.blob.split || green.blob.split) "_split" else "")
+                } + when {
+                    green !== originalGreen -> "_local_pixels"
+                    red.blob.split || green.blob.split -> "_split"
+                    else -> ""
+                })
             }.minWithOrNull(compareBy<DotPair> { it.dx }.thenBy { if (it.green.strict) 0 else 1 })
         }
+    }
+
+    /**
+     * A short, solid green marker group may have no thin bridge to split. Recover only
+     * the pixels directly below an existing strict red anchor, never spaced-out dots.
+     * The source blob must already pass collectDots and these tighter shape checks.
+     */
+    private fun localGreenForAnchor(
+        red: Dot, green: Dot, stride: Int, analysisWidth: Int, analysisHeight: Int,
+    ): Dot? {
+        if (!red.strict || green.strict) return null
+        val anchor = red.blob
+        val source = green.blob
+        val strictWidth = max(14, (analysisWidth * 0.025f).toInt())
+        val maxWidth = max(28, (analysisWidth * 0.055f).toInt())
+        val maxHeight = max(14, (analysisHeight * 0.012f).toInt())
+        if (source.width <= strictWidth || source.width > maxWidth || source.height !in 3..maxHeight) return null
+        if (source.height < anchor.height * 0.5f || source.height > anchor.height * 2f) return null
+        if (source.area.toFloat() / (source.width * source.height) < 0.65f) return null
+        // Require a nearby marker below the red, not another curve at a similar x.
+        val gap = source.y - (anchor.y + anchor.height)
+        if (source.centerY <= anchor.centerY || gap !in -1..max(2, min(anchor.height, source.height) / 2)) return null
+        if (anchor.centerX < source.x || anchor.centerX >= source.x + source.width) return null
+        val left = max(anchor.x, source.x)
+        val right = min(anchor.x + anchor.width, source.x + source.width)
+        if (right - left < max(2, ceil(anchor.width * 0.6f).toInt())) return null
+        val pixels = source.pixels.filter { it % stride in left until right }.toIntArray()
+        if (pixels.isEmpty()) return null
+        val counts = IntArray(right - left)
+        pixels.forEach { counts[it % stride - left]++ }
+        if (counts.any { it < 2 }) return null
+        val local = toBlob(pixels, stride, split = true)
+        if (local.height < 3 || local.area.toFloat() / (local.width * local.height) < 0.65f) return null
+        return green.copy(blob = local)
     }
 
     private fun evaluateCapital(

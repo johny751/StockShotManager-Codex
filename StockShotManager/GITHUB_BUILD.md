@@ -1,6 +1,6 @@
 # GitHub 构建与签名发布
 
-StockShotManager 现在是现有 `StockShotManager-Codex` 仓库中的普通源码目录；仓库根目录的 `.github/workflows/android-release.yml` 负责云端构建。后续先提交并推送源码，再在 GitHub 构建。应用版本以 app/build.gradle 为准（当前 1.11 / 12），APK 内的 Git 号对应本次云端检出的外层仓库提交。
+StockShotManager 现在是现有 `StockShotManager-Codex` 仓库中的普通源码目录；仓库根目录的 `.github/workflows/android-release.yml` 负责云端构建。后续先提交并推送源码，再在 GitHub 构建。应用版本以 app/build.gradle 为准（当前准备发布 1.12 / 13；最近已验证发布为 1.11 / 12），APK 内的 Git 号对应本次云端检出的外层仓库提交。
 
 ## 首次配置签名
 
@@ -37,7 +37,11 @@ StockShotManager 现在是现有 `StockShotManager-Codex` 仓库中的普通源�
 
 ## 验证状态与故障定位
 
-迁移包中的 268 项单测与四版 lint 是 2026-09-28 的历史证据，不能视为本次云端验证结果。只有本次 GitHub 运行的日志与 Artifacts 能证明本次构建通过。云端未连接手机，录屏/无障碍/存储授权、长备注行高和固定列操作、实际手机行情网络仍需实机验收。
+迁移包中的 268 项单测与四版 lint 是 2026-09-28 的历史证据，不能视为新版本的云端验证结果。最近已验证发布为 1.11（12）/ 9e446d2：[运行 46037666978](https://github.com/johny751/StockShotManager-Codex/actions/runs/46037666978) 四版各 135 项测试全部通过（共 540 次，0 失败/错误/跳过），Release lint 各 0 错误/38 警告，四包版本、包名、内嵌提交、原签名证书检查通过。
+
+该次产物已在连接手机上完成 A/B/C/D 原签名覆盖安装；百亚股份 003006 的 14:20 场景已完成 A 版独立实机观察，细节见 INDICATOR_VALIDATION.md。云端 runner 本身不连接手机。录屏/无障碍/存储授权各异常分支、长备注行高和固定列操作、完整历史采集与手机行情网络等未在本轮逐项验收。
+
+1.12（13）正在修复巴比食品粘连绿色标记漏配对，尚待新提交对应的四版云端运行和实机回归；不得沿用 46037666978 的结果宣称新版本通过。
 
 出现 `Missing repository secret` 时补齐对应 Secret 后重新运行；证书不匹配时核对是否填入原签名资料，不要通过删除指纹检查绕过。下载单测/lint 报告查看实际失败位置；若 Kotlin 增量缓存出现历史记录中的异常，先根据日志确认，避免日常构建盲目 clean。
 

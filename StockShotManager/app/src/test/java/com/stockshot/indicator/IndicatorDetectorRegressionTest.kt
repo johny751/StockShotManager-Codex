@@ -185,6 +185,109 @@ class IndicatorDetectorRegressionTest {
     }
 
     @Test
+    fun solidGreenStripSupportsTwoExistingRedSignalsWithoutMovingTheirTimes() = withChart { chart ->
+        chart.rect(198, 1047, 203, 1052, RED)
+        chart.rect(214, 1047, 219, 1052, RED)
+        chart.rect(196, 1053, 220, 1059, GREEN)
+        chart.capital()
+        val any = detect(chart)
+        assertEquals(any.reason, DetectionStatus.MATCH, any.trendStatus)
+        assertEquals(DetectionStatus.MATCH, any.status)
+        assertEquals(2, any.diagnostics.candidatePairCount)
+        assertEquals(1, any.diagnostics.checkedPairCount)
+        assertEquals(200f / WIDTH, any.redPoint!!.x, 0.00001f)
+        assertEquals(200f / WIDTH, any.diagnostics.capitalWindow!!.right, 0.00001f)
+        assertTrue(any.greenPoint!!.x >= 196f / WIDTH && any.greenPoint!!.x < 220f / WIDTH)
+        assertTrue(any.greenPoint!!.y >= 1053f / HEIGHT && any.greenPoint!!.y < 1059f / HEIGHT)
+        assertTrue(any.diagnostics.dotCandidates.any {
+            it.color == IndicatorDotColor.GREEN && it.split &&
+                kotlin.math.abs(it.center.x - any.greenPoint!!.x) < 0.00001f &&
+                kotlin.math.abs(it.center.y - any.greenPoint!!.y) < 0.00001f
+        })
+        assertTrue(any.diagnostics.messages.any { it.contains("绿块粘连") })
+        val latest = detect(chart, selection = "latest")
+        assertEquals(DetectionStatus.MATCH, latest.trendStatus)
+        assertEquals(2, latest.diagnostics.candidatePairCount)
+        assertEquals(1, latest.diagnostics.checkedPairCount)
+        assertEquals(216f / WIDTH, latest.redPoint!!.x, 0.00001f)
+        assertEquals(216f / WIDTH, latest.diagnostics.capitalWindow!!.right, 0.00001f)
+        assertTrue(latest.greenPoint!!.x >= 196f / WIDTH && latest.greenPoint!!.x < 220f / WIDTH)
+        assertNormalized(any)
+        assertNormalized(latest)
+    }
+
+    @Test
+    fun disconnectedGreenMarkersDoNotCreateSupportAcrossTheirEmptyGap() = withChart { chart ->
+        chart.rect(198, 1047, 203, 1052, RED)
+        chart.rect(184, 1053, 192, 1059, GREEN)
+        chart.rect(208, 1053, 216, 1059, GREEN)
+        assertNoSignalPair(chart)
+    }
+
+    @Test
+    fun veryWideFilledGreenBandCannotBecomeLocalSignalMarkers() = withChart { chart ->
+        chart.rect(198, 1047, 203, 1052, RED)
+        chart.rect(150, 1053, 320, 1059, GREEN)
+        assertNoSignalPair(chart)
+    }
+
+    @Test
+    fun aDistantRedMarkerCannotSnapToTheEdgeOfAGreenStrip() = withChart { chart ->
+        chart.rect(258, 1047, 263, 1052, RED)
+        chart.rect(196, 1053, 220, 1059, GREEN)
+        assertNoSignalPair(chart)
+    }
+
+    @Test
+    fun aGreenStripFarBelowTheRedIsNotTheSameSignal() = withChart { chart ->
+        chart.rect(198, 1005, 203, 1010, RED)
+        chart.rect(196, 1053, 220, 1059, GREEN)
+        assertNoSignalPair(chart)
+    }
+
+    @Test
+    fun aGreenCurveAboveTheRedCannotSupplyLowerMarkerEvidence() = withChart { chart ->
+        chart.rect(198, 1047, 203, 1052, RED)
+        chart.rect(196, 1020, 220, 1026, GREEN)
+        assertNoSignalPair(chart)
+    }
+
+    @Test
+    fun aThinGreenStrokeCannotBeExpandedIntoAThickSignalMarker() = withChart { chart ->
+        chart.rect(198, 1047, 203, 1052, RED)
+        chart.rect(196, 1053, 220, 1055, GREEN)
+        assertNoSignalPair(chart)
+    }
+
+    @Test
+    fun aGreenBlockMuchTallerThanItsRedAnchorIsRejected() = withChart { chart ->
+        chart.rect(198, 1025, 203, 1030, RED)
+        chart.rect(196, 1031, 220, 1043, GREEN)
+        assertNoSignalPair(chart)
+    }
+
+    @Test
+    fun aSparseGreenOutlineDoesNotCountAsSolidLocalSupport() = withChart { chart ->
+        chart.rect(198, 1047, 203, 1052, RED)
+        chart.rect(196, 1053, 220, 1059, GREEN)
+        chart.rect(197, 1054, 219, 1058, WHITE)
+        assertNoSignalPair(chart)
+    }
+
+    @Test
+    fun redCentreAtStripEdgeStillNeedsEnoughRealHorizontalOverlap() = withChart { chart ->
+        chart.rect(197, 1047, 204, 1052, RED)
+        chart.rect(200, 1053, 224, 1059, GREEN)
+        assertNoSignalPair(chart)
+    }
+
+    @Test
+    fun aSolidGreenStripWithoutRedAnchorsDoesNotInventSignals() = withChart { chart ->
+        chart.rect(196, 1053, 220, 1059, GREEN)
+        assertNoSignalPair(chart)
+    }
+
+    @Test
     fun aMarkerTouchingBaselineIsRetainedWithoutTreatingTheWholeLineAsADot() = withChart { chart ->
         chart.rect(198, 1047, 203, 1052, RED)
         chart.rect(197, 1055, 204, 1064, GREEN)
@@ -286,6 +389,44 @@ class IndicatorDetectorRegressionTest {
             assertTrue("The human-labelled failure is a visible capital counterexample", result.diagnostics.capitalStats.violatingColumns > 0)
             assertFalse(result.matched)
         } finally { bitmap.recycle() }
+    }
+
+    @Test
+    fun realBabiCaptureRecoversVisibleRedGreenPairsWithoutAssigningAFundTruthLabel() {
+        val bitmap = loadCapturedFixture("babi-605338-solid-green")
+        try {
+            for (selection in listOf("any", "latest")) {
+                val result = IndicatorDetector.detectIndicatorPattern(
+                    bitmap, capitalWindowScale = 0.2f, capitalMethod = "pointwise", capitalRule = "all", signalSelection = selection,
+                )
+                println("babi-605338 selection=" + selection +
+                    " dotPairs=" + result.diagnostics.candidatePairCount +
+                    " checked=" + result.diagnostics.checkedPairCount +
+                    " status=" + result.status + " trend=" + result.trendStatus +
+                    " capital=" + result.capitalStatus +
+                    " window=" + result.diagnostics.capitalWindow +
+                    " stats=" + result.diagnostics.capitalStats +
+                    " red=" + result.redPoint + " green=" + result.greenPoint)
+                assertTrue("Two visibly separate red anchors must retain their shared real green support", result.diagnostics.candidatePairCount >= 2)
+                assertEquals(result.reason, DetectionStatus.MATCH, result.trendStatus)
+                assertTrue(result.trendDotsMatched)
+                assertNotNull(result.redPoint)
+                assertNotNull(result.greenPoint)
+                assertNotNull("Funds must be evaluated at a recovered signal instead of skipped", result.diagnostics.capitalWindow)
+                assertTrue(result.diagnostics.capitalStats.totalColumns > 0)
+                assertNormalized(result)
+            }
+        } finally { bitmap.recycle() }
+    }
+
+    private fun assertNoSignalPair(chart: Chart) {
+        chart.capital()
+        val result = detect(chart)
+        assertTrue("Negative fixture must have a recognizable trend panel", result.diagnostics.trendPanelValid)
+        assertEquals(result.reason, DetectionStatus.NO_MATCH, result.trendStatus)
+        assertEquals(0, result.diagnostics.candidatePairCount)
+        assertEquals(DetectionStatus.UNKNOWN, result.capitalStatus)
+        assertFalse(result.matched)
     }
 
     private fun detect(chart: Chart, method: String = "pointwise", rule: String = "all", selection: String = "any", requireYellow: Boolean = false) =
